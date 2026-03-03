@@ -9,6 +9,9 @@ const DEFAULT_MIDDLE_PROXY_WARM_STANDBY: usize = 16;
 const DEFAULT_ME_RECONNECT_MAX_CONCURRENT_PER_DC: u32 = 8;
 const DEFAULT_ME_RECONNECT_FAST_RETRY_COUNT: u32 = 16;
 const DEFAULT_ME_SINGLE_ENDPOINT_SHADOW_WRITERS: u8 = 2;
+const DEFAULT_ME_ADAPTIVE_FLOOR_IDLE_SECS: u64 = 90;
+const DEFAULT_ME_ADAPTIVE_FLOOR_MIN_WRITERS_SINGLE_ENDPOINT: u8 = 1;
+const DEFAULT_ME_ADAPTIVE_FLOOR_RECOVER_GRACE_SECS: u64 = 180;
 const DEFAULT_UPSTREAM_CONNECT_RETRY_ATTEMPTS: u32 = 3;
 const DEFAULT_UPSTREAM_UNHEALTHY_FAIL_THRESHOLD: u32 = 4;
 const DEFAULT_LISTEN_ADDR_IPV6: &str = "::";
@@ -183,6 +186,18 @@ pub(crate) fn default_me_single_endpoint_outage_backoff_max_ms() -> u64 {
 
 pub(crate) fn default_me_single_endpoint_shadow_rotate_every_secs() -> u64 {
     900
+}
+
+pub(crate) fn default_me_adaptive_floor_idle_secs() -> u64 {
+    DEFAULT_ME_ADAPTIVE_FLOOR_IDLE_SECS
+}
+
+pub(crate) fn default_me_adaptive_floor_min_writers_single_endpoint() -> u8 {
+    DEFAULT_ME_ADAPTIVE_FLOOR_MIN_WRITERS_SINGLE_ENDPOINT
+}
+
+pub(crate) fn default_me_adaptive_floor_recover_grace_secs() -> u64 {
+    DEFAULT_ME_ADAPTIVE_FLOOR_RECOVER_GRACE_SECS
 }
 
 pub(crate) fn default_upstream_connect_retry_attempts() -> u32 {

@@ -158,6 +158,31 @@ impl MeBindStaleMode {
     }
 }
 
+/// Middle-End writer floor policy mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MeFloorMode {
+    #[default]
+    Static,
+    Adaptive,
+}
+
+impl MeFloorMode {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            MeFloorMode::Static => 0,
+            MeFloorMode::Adaptive => 1,
+        }
+    }
+
+    pub fn from_u8(raw: u8) -> Self {
+        match raw {
+            1 => MeFloorMode::Adaptive,
+            _ => MeFloorMode::Static,
+        }
+    }
+}
+
 /// Telemetry controls for hot-path counters and ME diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TelemetryConfig {
@@ -419,6 +444,22 @@ pub struct GeneralConfig {
     #[serde(default = "default_me_single_endpoint_shadow_rotate_every_secs")]
     pub me_single_endpoint_shadow_rotate_every_secs: u64,
 
+    /// Floor policy mode for ME writer targets.
+    #[serde(default)]
+    pub me_floor_mode: MeFloorMode,
+
+    /// Idle time in seconds before adaptive floor can reduce single-endpoint writer target.
+    #[serde(default = "default_me_adaptive_floor_idle_secs")]
+    pub me_adaptive_floor_idle_secs: u64,
+
+    /// Minimum writer target for single-endpoint DC groups in adaptive floor mode.
+    #[serde(default = "default_me_adaptive_floor_min_writers_single_endpoint")]
+    pub me_adaptive_floor_min_writers_single_endpoint: u8,
+
+    /// Grace period in seconds to hold static floor after activity in adaptive mode.
+    #[serde(default = "default_me_adaptive_floor_recover_grace_secs")]
+    pub me_adaptive_floor_recover_grace_secs: u64,
+
     /// Connect attempts for the selected upstream before returning error/fallback.
     #[serde(default = "default_upstream_connect_retry_attempts")]
     pub upstream_connect_retry_attempts: u32,
@@ -634,6 +675,10 @@ impl Default for GeneralConfig {
             me_single_endpoint_outage_backoff_min_ms: default_me_single_endpoint_outage_backoff_min_ms(),
             me_single_endpoint_outage_backoff_max_ms: default_me_single_endpoint_outage_backoff_max_ms(),
             me_single_endpoint_shadow_rotate_every_secs: default_me_single_endpoint_shadow_rotate_every_secs(),
+            me_floor_mode: MeFloorMode::default(),
+            me_adaptive_floor_idle_secs: default_me_adaptive_floor_idle_secs(),
+            me_adaptive_floor_min_writers_single_endpoint: default_me_adaptive_floor_min_writers_single_endpoint(),
+            me_adaptive_floor_recover_grace_secs: default_me_adaptive_floor_recover_grace_secs(),
             upstream_connect_retry_attempts: default_upstream_connect_retry_attempts(),
             upstream_connect_retry_backoff_ms: default_upstream_connect_retry_backoff_ms(),
             upstream_unhealthy_fail_threshold: default_upstream_unhealthy_fail_threshold(),

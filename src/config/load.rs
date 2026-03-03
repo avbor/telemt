@@ -261,6 +261,15 @@ impl ProxyConfig {
             ));
         }
 
+        if config.general.me_adaptive_floor_min_writers_single_endpoint == 0
+            || config.general.me_adaptive_floor_min_writers_single_endpoint > 32
+        {
+            return Err(ProxyError::Config(
+                "general.me_adaptive_floor_min_writers_single_endpoint must be within [1, 32]"
+                    .to_string(),
+            ));
+        }
+
         if config.general.me_single_endpoint_outage_backoff_min_ms == 0 {
             return Err(ProxyError::Config(
                 "general.me_single_endpoint_outage_backoff_min_ms must be > 0".to_string(),
@@ -642,6 +651,19 @@ mod tests {
             cfg.general.me_single_endpoint_shadow_rotate_every_secs,
             default_me_single_endpoint_shadow_rotate_every_secs()
         );
+        assert_eq!(cfg.general.me_floor_mode, MeFloorMode::default());
+        assert_eq!(
+            cfg.general.me_adaptive_floor_idle_secs,
+            default_me_adaptive_floor_idle_secs()
+        );
+        assert_eq!(
+            cfg.general.me_adaptive_floor_min_writers_single_endpoint,
+            default_me_adaptive_floor_min_writers_single_endpoint()
+        );
+        assert_eq!(
+            cfg.general.me_adaptive_floor_recover_grace_secs,
+            default_me_adaptive_floor_recover_grace_secs()
+        );
         assert_eq!(
             cfg.general.upstream_connect_retry_attempts,
             default_upstream_connect_retry_attempts()
@@ -703,6 +725,19 @@ mod tests {
         assert_eq!(
             general.me_single_endpoint_shadow_rotate_every_secs,
             default_me_single_endpoint_shadow_rotate_every_secs()
+        );
+        assert_eq!(general.me_floor_mode, MeFloorMode::default());
+        assert_eq!(
+            general.me_adaptive_floor_idle_secs,
+            default_me_adaptive_floor_idle_secs()
+        );
+        assert_eq!(
+            general.me_adaptive_floor_min_writers_single_endpoint,
+            default_me_adaptive_floor_min_writers_single_endpoint()
+        );
+        assert_eq!(
+            general.me_adaptive_floor_recover_grace_secs,
+            default_me_adaptive_floor_recover_grace_secs()
         );
         assert_eq!(
             general.upstream_connect_retry_attempts,
@@ -928,6 +963,50 @@ mod tests {
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
         assert!(err.contains("general.me_single_endpoint_shadow_writers must be within [0, 32]"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn me_adaptive_floor_min_writers_out_of_range_is_rejected() {
+        let toml = r#"
+            [general]
+            me_adaptive_floor_min_writers_single_endpoint = 0
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_me_adaptive_floor_min_writers_out_of_range_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let err = ProxyConfig::load(&path).unwrap_err().to_string();
+        assert!(
+            err.contains(
+                "general.me_adaptive_floor_min_writers_single_endpoint must be within [1, 32]"
+            )
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn me_floor_mode_adaptive_is_parsed() {
+        let toml = r#"
+            [general]
+            me_floor_mode = "adaptive"
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_me_floor_mode_adaptive_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let cfg = ProxyConfig::load(&path).unwrap();
+        assert_eq!(cfg.general.me_floor_mode, MeFloorMode::Adaptive);
         let _ = std::fs::remove_file(path);
     }
 
