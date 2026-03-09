@@ -8,7 +8,8 @@ use crate::stats::Stats;
 
 use super::ApiShared;
 use super::config_store::{
-    ensure_expected_revision, load_config_from_disk, save_config_to_disk,
+    AccessSection, ensure_expected_revision, load_config_from_disk, save_access_sections_to_disk,
+    save_config_to_disk,
 };
 use super::model::{
     ApiFailure, CreateUserRequest, CreateUserResponse, PatchUserRequest, RotateSecretRequest,
@@ -21,6 +22,12 @@ pub(super) async fn create_user(
     expected_revision: Option<String>,
     shared: &ApiShared,
 ) -> Result<(CreateUserResponse, String), ApiFailure> {
+    let touches_user_ad_tags = body.user_ad_tag.is_some();
+    let touches_user_max_tcp_conns = body.max_tcp_conns.is_some();
+    let touches_user_expirations = body.expiration_rfc3339.is_some();
+    let touches_user_data_quota = body.data_quota_bytes.is_some();
+    let touches_user_max_unique_ips = body.max_unique_ips.is_some();
+
     if !is_valid_username(&body.username) {
         return Err(ApiFailure::bad_request(
             "username must match [A-Za-z0-9_.-] and be 1..64 chars",
@@ -84,7 +91,24 @@ pub(super) async fn create_user(
     cfg.validate()
         .map_err(|e| ApiFailure::bad_request(format!("config validation failed: {}", e)))?;
 
-    let revision = save_config_to_disk(&shared.config_path, &cfg).await?;
+    let mut touched_sections = vec![AccessSection::Users];
+    if touches_user_ad_tags {
+        touched_sections.push(AccessSection::UserAdTags);
+    }
+    if touches_user_max_tcp_conns {
+        touched_sections.push(AccessSection::UserMaxTcpConns);
+    }
+    if touches_user_expirations {
+        touched_sections.push(AccessSection::UserExpirations);
+    }
+    if touches_user_data_quota {
+        touched_sections.push(AccessSection::UserDataQuota);
+    }
+    if touches_user_max_unique_ips {
+        touched_sections.push(AccessSection::UserMaxUniqueIps);
+    }
+
+    let revision = save_access_sections_to_disk(&shared.config_path, &cfg, &touched_sections).await?;
     drop(_guard);
 
     if let Some(limit) = updated_limit {
@@ -231,7 +255,15 @@ pub(super) async fn rotate_secret(
     cfg.access.users.insert(user.to_string(), secret.clone());
     cfg.validate()
         .map_err(|e| ApiFailure::bad_request(format!("config validation failed: {}", e)))?;
-    let revision = save_config_to_disk(&shared.config_path, &cfg).await?;
+    let touched_sections = [
+        AccessSection::Users,
+        AccessSection::UserAdTags,
+        AccessSection::UserMaxTcpConns,
+        AccessSection::UserExpirations,
+        AccessSection::UserDataQuota,
+        AccessSection::UserMaxUniqueIps,
+    ];
+    let revision = save_access_sections_to_disk(&shared.config_path, &cfg, &touched_sections).await?;
     drop(_guard);
 
     let (detected_ip_v4, detected_ip_v6) = shared.detected_link_ips();
