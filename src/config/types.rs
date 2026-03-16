@@ -1174,6 +1174,11 @@ pub struct ServerConfig {
 
     #[serde(default)]
     pub listeners: Vec<ListenerConfig>,
+
+    /// Maximum number of concurrent client connections.
+    /// 0 means unlimited.
+    #[serde(default = "default_server_max_connections")]
+    pub max_connections: u32,
 }
 
 impl Default for ServerConfig {
@@ -1192,6 +1197,7 @@ impl Default for ServerConfig {
             metrics_whitelist: default_metrics_whitelist(),
             api: ApiConfig::default(),
             listeners: Vec::new(),
+            max_connections: default_server_max_connections(),
         }
     }
 }
