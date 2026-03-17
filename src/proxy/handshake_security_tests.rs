@@ -84,7 +84,6 @@ fn make_valid_tls_client_hello_with_alpn(
 }
 
 fn test_config_with_secret_hex(secret_hex: &str) -> ProxyConfig {
-    clear_auth_probe_state_for_testing();
     let mut cfg = ProxyConfig::default();
     cfg.access.users.clear();
     cfg.access
@@ -369,6 +368,9 @@ async fn invalid_tls_probe_does_not_pollute_replay_cache() {
 
 #[tokio::test]
 async fn empty_decoded_secret_is_rejected() {
+    let _guard = warned_secrets_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     clear_warned_secrets_for_testing();
     let config = test_config_with_secret_hex("");
     let replay_checker = ReplayChecker::new(128, Duration::from_secs(60));
@@ -393,6 +395,9 @@ async fn empty_decoded_secret_is_rejected() {
 
 #[tokio::test]
 async fn wrong_length_decoded_secret_is_rejected() {
+    let _guard = warned_secrets_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     clear_warned_secrets_for_testing();
     let config = test_config_with_secret_hex("aa");
     let replay_checker = ReplayChecker::new(128, Duration::from_secs(60));
@@ -443,6 +448,12 @@ async fn invalid_mtproto_probe_does_not_pollute_replay_cache() {
 
 #[tokio::test]
 async fn mixed_secret_lengths_keep_valid_user_authenticating() {
+    let _probe_guard = auth_probe_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = warned_secrets_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     clear_warned_secrets_for_testing();
     clear_auth_probe_state_for_testing();
     let good_secret = [0x22u8; 16];
@@ -708,6 +719,9 @@ fn mode_policy_matrix_is_stable_for_all_tag_transport_mode_combinations() {
 
 #[test]
 fn invalid_secret_warning_keys_do_not_collide_on_colon_boundaries() {
+    let _guard = warned_secrets_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     clear_warned_secrets_for_testing();
 
     warn_invalid_secret_once("a:b", "c", ACCESS_SECRET_BYTES, Some(1));
@@ -755,8 +769,9 @@ async fn repeated_invalid_tls_probes_trigger_pre_auth_throttle() {
     }
 
     assert!(
-        auth_probe_is_throttled_for_testing(peer.ip()),
-        "invalid probe burst must activate per-IP pre-auth throttle"
+        auth_probe_fail_streak_for_testing(peer.ip())
+            .is_some_and(|streak| streak >= AUTH_PROBE_BACKOFF_START_FAILS),
+        "invalid probe burst must grow pre-auth failure streak to backoff threshold"
     );
 }
 
@@ -855,7 +870,7 @@ fn auth_probe_capacity_prunes_stale_entries_for_new_ips() {
 }
 
 #[test]
-fn auth_probe_capacity_stays_fail_closed_when_map_is_fresh_and_full() {
+fn auth_probe_capacity_forces_bounded_eviction_when_map_is_fresh_and_full() {
     let state = DashMap::new();
     let now = Instant::now();
 
@@ -880,12 +895,88 @@ fn auth_probe_capacity_stays_fail_closed_when_map_is_fresh_and_full() {
     auth_probe_record_failure_with_state(&state, newcomer, now);
 
     assert!(
-        state.get(&newcomer).is_none(),
-        "when all entries are fresh and full, new probes must not be admitted"
+        state.get(&newcomer).is_some(),
+        "when all entries are fresh and full, one bounded eviction must admit a new probe source"
     );
     assert_eq!(
         state.len(),
         AUTH_PROBE_TRACK_MAX_ENTRIES,
-        "auth probe map must stay at the configured cap"
+        "auth probe map must stay at the configured cap after forced eviction"
+    );
+}
+
+#[test]
+fn auth_probe_ipv6_is_bucketed_by_prefix_64() {
+    let state = DashMap::new();
+    let now = Instant::now();
+
+    let ip_a = IpAddr::V6("2001:db8:abcd:1234:1:2:3:4".parse().unwrap());
+    let ip_b = IpAddr::V6("2001:db8:abcd:1234:ffff:eeee:dddd:cccc".parse().unwrap());
+
+    auth_probe_record_failure_with_state(&state, normalize_auth_probe_ip(ip_a), now);
+    auth_probe_record_failure_with_state(&state, normalize_auth_probe_ip(ip_b), now);
+
+    let normalized = normalize_auth_probe_ip(ip_a);
+    assert_eq!(
+        state.len(),
+        1,
+        "IPv6 sources in the same /64 must share one pre-auth throttle bucket"
+    );
+    assert_eq!(
+        state.get(&normalized).map(|entry| entry.fail_streak),
+        Some(2),
+        "failures from the same /64 must accumulate in one throttle state"
+    );
+}
+
+#[test]
+fn auth_probe_ipv6_different_prefixes_use_distinct_buckets() {
+    let state = DashMap::new();
+    let now = Instant::now();
+
+    let ip_a = IpAddr::V6("2001:db8:1111:2222:1:2:3:4".parse().unwrap());
+    let ip_b = IpAddr::V6("2001:db8:1111:3333:1:2:3:4".parse().unwrap());
+
+    auth_probe_record_failure_with_state(&state, normalize_auth_probe_ip(ip_a), now);
+    auth_probe_record_failure_with_state(&state, normalize_auth_probe_ip(ip_b), now);
+
+    assert_eq!(
+        state.len(),
+        2,
+        "different IPv6 /64 prefixes must not share throttle buckets"
+    );
+    assert_eq!(
+        state.get(&normalize_auth_probe_ip(ip_a)).map(|entry| entry.fail_streak),
+        Some(1)
+    );
+    assert_eq!(
+        state.get(&normalize_auth_probe_ip(ip_b)).map(|entry| entry.fail_streak),
+        Some(1)
+    );
+}
+
+#[test]
+fn auth_probe_success_clears_whole_ipv6_prefix_bucket() {
+    let _guard = auth_probe_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    clear_auth_probe_state_for_testing();
+
+    let now = Instant::now();
+    let ip_fail = IpAddr::V6("2001:db8:aaaa:bbbb:1:2:3:4".parse().unwrap());
+    let ip_success = IpAddr::V6("2001:db8:aaaa:bbbb:ffff:eeee:dddd:cccc".parse().unwrap());
+
+    auth_probe_record_failure(ip_fail, now);
+    assert_eq!(
+        auth_probe_fail_streak_for_testing(ip_fail),
+        Some(1),
+        "precondition: normalized prefix bucket must exist"
+    );
+
+    auth_probe_record_success(ip_success);
+    assert_eq!(
+        auth_probe_fail_streak_for_testing(ip_fail),
+        None,
+        "success from the same /64 must clear the shared bucket"
     );
 }

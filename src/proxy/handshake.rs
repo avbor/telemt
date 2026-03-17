@@ -4,7 +4,7 @@
 
 use std::net::SocketAddr;
 use std::collections::HashSet;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -57,6 +57,16 @@ fn auth_probe_state_map() -> &'static DashMap<IpAddr, AuthProbeState> {
     AUTH_PROBE_STATE.get_or_init(DashMap::new)
 }
 
+fn normalize_auth_probe_ip(peer_ip: IpAddr) -> IpAddr {
+    match peer_ip {
+        IpAddr::V4(ip) => IpAddr::V4(ip),
+        IpAddr::V6(ip) => {
+            let [a, b, c, d, _, _, _, _] = ip.segments();
+            IpAddr::V6(Ipv6Addr::new(a, b, c, d, 0, 0, 0, 0))
+        }
+    }
+}
+
 fn auth_probe_backoff(fail_streak: u32) -> Duration {
     if fail_streak < AUTH_PROBE_BACKOFF_START_FAILS {
         return Duration::ZERO;
@@ -75,6 +85,7 @@ fn auth_probe_state_expired(state: &AuthProbeState, now: Instant) -> bool {
 }
 
 fn auth_probe_is_throttled(peer_ip: IpAddr, now: Instant) -> bool {
+    let peer_ip = normalize_auth_probe_ip(peer_ip);
     let state = auth_probe_state_map();
     let Some(entry) = state.get(&peer_ip) else {
         return false;
@@ -88,6 +99,7 @@ fn auth_probe_is_throttled(peer_ip: IpAddr, now: Instant) -> bool {
 }
 
 fn auth_probe_record_failure(peer_ip: IpAddr, now: Instant) {
+    let peer_ip = normalize_auth_probe_ip(peer_ip);
     let state = auth_probe_state_map();
     auth_probe_record_failure_with_state(state, peer_ip, now);
 }
@@ -114,7 +126,11 @@ fn auth_probe_record_failure_with_state(
 
     if state.len() >= AUTH_PROBE_TRACK_MAX_ENTRIES {
         let mut stale_keys = Vec::new();
+        let mut eviction_candidate = None;
         for entry in state.iter().take(AUTH_PROBE_PRUNE_SCAN_LIMIT) {
+            if eviction_candidate.is_none() {
+                eviction_candidate = Some(*entry.key());
+            }
             if auth_probe_state_expired(entry.value(), now) {
                 stale_keys.push(*entry.key());
             }
@@ -123,23 +139,22 @@ fn auth_probe_record_failure_with_state(
             state.remove(&stale_key);
         }
         if state.len() >= AUTH_PROBE_TRACK_MAX_ENTRIES {
-            return;
+            let Some(evict_key) = eviction_candidate else {
+                return;
+            };
+            state.remove(&evict_key);
         }
     }
 
     state.insert(peer_ip, AuthProbeState {
-        fail_streak: 0,
-        blocked_until: now,
+        fail_streak: 1,
+        blocked_until: now + auth_probe_backoff(1),
         last_seen: now,
     });
-
-    if let Some(mut entry) = state.get_mut(&peer_ip) {
-        entry.fail_streak = 1;
-        entry.blocked_until = now + auth_probe_backoff(1);
-    }
 }
 
 fn auth_probe_record_success(peer_ip: IpAddr) {
+    let peer_ip = normalize_auth_probe_ip(peer_ip);
     let state = auth_probe_state_map();
     state.remove(&peer_ip);
 }
@@ -153,6 +168,7 @@ fn clear_auth_probe_state_for_testing() {
 
 #[cfg(test)]
 fn auth_probe_fail_streak_for_testing(peer_ip: IpAddr) -> Option<u32> {
+    let peer_ip = normalize_auth_probe_ip(peer_ip);
     let state = AUTH_PROBE_STATE.get()?;
     state.get(&peer_ip).map(|entry| entry.fail_streak)
 }
@@ -175,6 +191,12 @@ fn clear_warned_secrets_for_testing() {
     {
         guard.clear();
     }
+}
+
+#[cfg(test)]
+fn warned_secrets_test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn warn_invalid_secret_once(name: &str, reason: &str, expected: usize, got: Option<usize>) {

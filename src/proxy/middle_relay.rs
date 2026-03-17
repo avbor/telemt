@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 #[cfg(test)]
 use std::sync::Mutex;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use dashmap::DashMap;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -107,7 +107,11 @@ fn should_emit_full_desync(key: u64, all_full: bool, now: Instant) -> bool {
 
     if dedup.len() >= DESYNC_DEDUP_MAX_ENTRIES {
         let mut stale_keys = Vec::new();
+        let mut eviction_candidate = None;
         for entry in dedup.iter().take(DESYNC_DEDUP_PRUNE_SCAN_LIMIT) {
+            if eviction_candidate.is_none() {
+                eviction_candidate = Some(*entry.key());
+            }
             if now.duration_since(*entry.value()) >= DESYNC_DEDUP_WINDOW {
                 stale_keys.push(*entry.key());
             }
@@ -116,6 +120,11 @@ fn should_emit_full_desync(key: u64, all_full: bool, now: Instant) -> bool {
             dedup.remove(&stale_key);
         }
         if dedup.len() >= DESYNC_DEDUP_MAX_ENTRIES {
+            let Some(evict_key) = eviction_candidate else {
+                return false;
+            };
+            dedup.remove(&evict_key);
+            dedup.insert(key, now);
             return false;
         }
     }
@@ -784,25 +793,22 @@ where
             len
         };
 
-        let chunk_cap = buffer_pool.buffer_size().max(1024);
-        let mut payload = BytesMut::with_capacity(len.min(chunk_cap));
-        let mut remaining = len;
-        while remaining > 0 {
-            let chunk_len = remaining.min(chunk_cap);
-            let mut chunk = buffer_pool.get();
-            chunk.resize(chunk_len, 0);
-            read_exact_with_timeout(client_reader, &mut chunk[..chunk_len], frame_read_timeout)
-                .await?;
-            payload.extend_from_slice(&chunk[..chunk_len]);
-            remaining -= chunk_len;
+        let mut payload = buffer_pool.get();
+        payload.clear();
+        let current_cap = payload.capacity();
+        if current_cap < len {
+            payload.reserve(len - current_cap);
         }
+        payload.resize(len, 0);
+        read_exact_with_timeout(client_reader, &mut payload[..len], frame_read_timeout).await?;
 
         // Secure Intermediate: strip validated trailing padding bytes.
         if proto_tag == ProtoTag::Secure {
             payload.truncate(secure_payload_len);
         }
         *frame_counter += 1;
-        return Ok(Some((payload.freeze(), quickack)));
+        let payload = payload.take().freeze();
+        return Ok(Some((payload, quickack)));
     }
 }
 

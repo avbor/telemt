@@ -101,13 +101,33 @@ fn desync_dedup_cache_is_bounded() {
 
     assert!(
         !should_emit_full_desync(u64::MAX, false, now),
-        "new key above cap must be suppressed to bound memory"
+        "new key above cap must remain suppressed to avoid log amplification"
     );
 
     assert!(
         !should_emit_full_desync(7, false, now),
         "already tracked key inside dedup window must stay suppressed"
     );
+}
+
+#[test]
+fn desync_dedup_full_cache_churn_stays_suppressed() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("desync dedup test lock must be available");
+    clear_desync_dedup_for_testing();
+
+    let now = Instant::now();
+    for key in 0..DESYNC_DEDUP_MAX_ENTRIES as u64 {
+        assert!(should_emit_full_desync(key, false, now));
+    }
+
+    for offset in 0..2048u64 {
+        assert!(
+            !should_emit_full_desync(u64::MAX - offset, false, now),
+            "fresh full-cache churn must remain suppressed under pressure"
+        );
+    }
 }
 
 fn make_forensics_state() -> RelayForensicsState {
@@ -198,4 +218,214 @@ async fn read_client_payload_times_out_on_payload_stall() {
         matches!(result, Err(ProxyError::Io(ref e)) if e.kind() == std::io::ErrorKind::TimedOut),
         "stalled payload body read must time out"
     );
+}
+
+#[tokio::test]
+async fn read_client_payload_large_intermediate_frame_is_exact() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("middle relay test lock must be available");
+
+    let (reader, mut writer) = duplex(262_144);
+    let mut crypto_reader = make_crypto_reader(reader);
+    let buffer_pool = Arc::new(BufferPool::new());
+    let stats = Stats::new();
+    let forensics = make_forensics_state();
+    let mut frame_counter = 0;
+
+    let payload_len = buffer_pool.buffer_size().saturating_mul(3).max(65_537);
+    let mut plaintext = Vec::with_capacity(4 + payload_len);
+    plaintext.extend_from_slice(&(payload_len as u32).to_le_bytes());
+    plaintext.extend((0..payload_len).map(|idx| (idx as u8).wrapping_mul(31)));
+
+    let encrypted = encrypt_for_reader(&plaintext);
+    writer.write_all(&encrypted).await.unwrap();
+
+    let read = read_client_payload(
+        &mut crypto_reader,
+        ProtoTag::Intermediate,
+        payload_len + 16,
+        TokioDuration::from_secs(1),
+        &buffer_pool,
+        &forensics,
+        &mut frame_counter,
+        &stats,
+    )
+    .await
+    .expect("payload read must succeed")
+    .expect("frame must be present");
+
+    let (frame, quickack) = read;
+    assert!(!quickack, "quickack flag must be unset");
+    assert_eq!(frame.len(), payload_len, "payload size must match wire length");
+    for (idx, byte) in frame.iter().enumerate() {
+        assert_eq!(*byte, (idx as u8).wrapping_mul(31));
+    }
+    assert_eq!(frame_counter, 1, "exactly one frame must be counted");
+}
+
+#[tokio::test]
+async fn read_client_payload_secure_strips_tail_padding_bytes() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("middle relay test lock must be available");
+
+    let (reader, mut writer) = duplex(1024);
+    let mut crypto_reader = make_crypto_reader(reader);
+    let buffer_pool = Arc::new(BufferPool::new());
+    let stats = Stats::new();
+    let forensics = make_forensics_state();
+    let mut frame_counter = 0;
+
+    let payload = [0x11u8, 0x22, 0x33, 0x44, 0xaa, 0xbb, 0xcc, 0xdd];
+    let tail = [0xeeu8, 0xff, 0x99];
+    let wire_len = payload.len() + tail.len();
+
+    let mut plaintext = Vec::with_capacity(4 + wire_len);
+    plaintext.extend_from_slice(&(wire_len as u32).to_le_bytes());
+    plaintext.extend_from_slice(&payload);
+    plaintext.extend_from_slice(&tail);
+    let encrypted = encrypt_for_reader(&plaintext);
+    writer.write_all(&encrypted).await.unwrap();
+
+    let read = read_client_payload(
+        &mut crypto_reader,
+        ProtoTag::Secure,
+        1024,
+        TokioDuration::from_secs(1),
+        &buffer_pool,
+        &forensics,
+        &mut frame_counter,
+        &stats,
+    )
+    .await
+    .expect("secure payload read must succeed")
+    .expect("secure frame must be present");
+
+    let (frame, quickack) = read;
+    assert!(!quickack, "quickack flag must be unset");
+    assert_eq!(frame.as_ref(), &payload);
+    assert_eq!(frame_counter, 1, "one secure frame must be counted");
+}
+
+#[tokio::test]
+async fn read_client_payload_secure_rejects_wire_len_below_4() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("middle relay test lock must be available");
+
+    let (reader, mut writer) = duplex(1024);
+    let mut crypto_reader = make_crypto_reader(reader);
+    let buffer_pool = Arc::new(BufferPool::new());
+    let stats = Stats::new();
+    let forensics = make_forensics_state();
+    let mut frame_counter = 0;
+
+    let mut plaintext = Vec::with_capacity(7);
+    plaintext.extend_from_slice(&3u32.to_le_bytes());
+    plaintext.extend_from_slice(&[1u8, 2, 3]);
+    let encrypted = encrypt_for_reader(&plaintext);
+    writer.write_all(&encrypted).await.unwrap();
+
+    let result = read_client_payload(
+        &mut crypto_reader,
+        ProtoTag::Secure,
+        1024,
+        TokioDuration::from_secs(1),
+        &buffer_pool,
+        &forensics,
+        &mut frame_counter,
+        &stats,
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(ProxyError::Proxy(ref msg)) if msg.contains("Frame too small: 3")),
+        "secure wire length below 4 must be fail-closed by the frame-too-small guard"
+    );
+}
+
+#[tokio::test]
+async fn read_client_payload_intermediate_skips_zero_len_frame() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("middle relay test lock must be available");
+
+    let (reader, mut writer) = duplex(1024);
+    let mut crypto_reader = make_crypto_reader(reader);
+    let buffer_pool = Arc::new(BufferPool::new());
+    let stats = Stats::new();
+    let forensics = make_forensics_state();
+    let mut frame_counter = 0;
+
+    let payload = [7u8, 6, 5, 4, 3, 2, 1, 0];
+    let mut plaintext = Vec::with_capacity(4 + 4 + payload.len());
+    plaintext.extend_from_slice(&0u32.to_le_bytes());
+    plaintext.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    plaintext.extend_from_slice(&payload);
+    let encrypted = encrypt_for_reader(&plaintext);
+    writer.write_all(&encrypted).await.unwrap();
+
+    let read = read_client_payload(
+        &mut crypto_reader,
+        ProtoTag::Intermediate,
+        1024,
+        TokioDuration::from_secs(1),
+        &buffer_pool,
+        &forensics,
+        &mut frame_counter,
+        &stats,
+    )
+    .await
+    .expect("intermediate payload read must succeed")
+    .expect("frame must be present");
+
+    let (frame, quickack) = read;
+    assert!(!quickack, "quickack flag must be unset");
+    assert_eq!(frame.as_ref(), &payload);
+    assert_eq!(frame_counter, 1, "zero-length frame must be skipped");
+}
+
+#[tokio::test]
+async fn read_client_payload_abridged_extended_len_sets_quickack() {
+    let _guard = desync_dedup_test_lock()
+        .lock()
+        .expect("middle relay test lock must be available");
+
+    let (reader, mut writer) = duplex(4096);
+    let mut crypto_reader = make_crypto_reader(reader);
+    let buffer_pool = Arc::new(BufferPool::new());
+    let stats = Stats::new();
+    let forensics = make_forensics_state();
+    let mut frame_counter = 0;
+
+    let payload_len = 4 * 130;
+    let len_words = (payload_len / 4) as u32;
+    let mut plaintext = Vec::with_capacity(1 + 3 + payload_len);
+    plaintext.push(0xff | 0x80);
+    let lw = len_words.to_le_bytes();
+    plaintext.extend_from_slice(&lw[..3]);
+    plaintext.extend((0..payload_len).map(|idx| (idx as u8).wrapping_add(17)));
+
+    let encrypted = encrypt_for_reader(&plaintext);
+    writer.write_all(&encrypted).await.unwrap();
+
+    let read = read_client_payload(
+        &mut crypto_reader,
+        ProtoTag::Abridged,
+        payload_len + 16,
+        TokioDuration::from_secs(1),
+        &buffer_pool,
+        &forensics,
+        &mut frame_counter,
+        &stats,
+    )
+    .await
+    .expect("abridged payload read must succeed")
+    .expect("frame must be present");
+
+    let (frame, quickack) = read;
+    assert!(quickack, "quickack bit must be propagated from abridged header");
+    assert_eq!(frame.len(), payload_len);
+    assert_eq!(frame_counter, 1, "one abridged frame must be counted");
 }
