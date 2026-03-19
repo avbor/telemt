@@ -39,6 +39,7 @@ use super::load::{LoadedConfig, ProxyConfig};
 
 const HOT_RELOAD_STABLE_SNAPSHOTS: u8 = 2;
 const HOT_RELOAD_DEBOUNCE: Duration = Duration::from_millis(50);
+const HOT_RELOAD_STABLE_RECHECK: Duration = Duration::from_millis(75);
 
 // ── Hot fields ────────────────────────────────────────────────────────────────
 
@@ -379,6 +380,14 @@ impl ReloadState {
         self.applied_snapshot_hash = Some(hash);
         self.reset_candidate();
     }
+
+    fn pending_candidate(&self) -> Option<(u64, u8)> {
+        let hash = self.candidate_snapshot_hash?;
+        if self.candidate_hits < HOT_RELOAD_STABLE_SNAPSHOTS {
+            return Some((hash, self.candidate_hits));
+        }
+        None
+    }
 }
 
 fn normalize_watch_path(path: &Path) -> PathBuf {
@@ -603,6 +612,8 @@ fn warn_non_hot_changes(old: &ProxyConfig, new: &ProxyConfig, non_hot_changed: b
         || old.server.listen_tcp != new.server.listen_tcp
         || old.server.listen_unix_sock != new.server.listen_unix_sock
         || old.server.listen_unix_sock_perm != new.server.listen_unix_sock_perm
+        || old.server.max_connections != new.server.max_connections
+        || old.server.accept_permit_timeout_ms != new.server.accept_permit_timeout_ms
     {
         warned = true;
         warn!("config reload: server listener settings changed; restart required");
@@ -662,6 +673,9 @@ fn warn_non_hot_changes(old: &ProxyConfig, new: &ProxyConfig, non_hot_changed: b
     }
     if old.general.me_route_no_writer_mode != new.general.me_route_no_writer_mode
         || old.general.me_route_no_writer_wait_ms != new.general.me_route_no_writer_wait_ms
+        || old.general.me_route_hybrid_max_wait_ms != new.general.me_route_hybrid_max_wait_ms
+        || old.general.me_route_blocking_send_timeout_ms
+            != new.general.me_route_blocking_send_timeout_ms
         || old.general.me_route_inline_recovery_attempts
             != new.general.me_route_inline_recovery_attempts
         || old.general.me_route_inline_recovery_wait_ms
@@ -669,6 +683,10 @@ fn warn_non_hot_changes(old: &ProxyConfig, new: &ProxyConfig, non_hot_changed: b
     {
         warned = true;
         warn!("config reload: general.me_route_no_writer_* changed; restart required");
+    }
+    if old.general.me_c2me_send_timeout_ms != new.general.me_c2me_send_timeout_ms {
+        warned = true;
+        warn!("config reload: general.me_c2me_send_timeout_ms changed; restart required");
     }
     if old.general.unknown_dc_log_path != new.general.unknown_dc_log_path
         || old.general.unknown_dc_file_log_enabled != new.general.unknown_dc_file_log_enabled
@@ -1253,6 +1271,73 @@ fn reload_config(
     Some(next_manifest)
 }
 
+async fn reload_with_internal_stable_rechecks(
+    config_path: &PathBuf,
+    config_tx: &watch::Sender<Arc<ProxyConfig>>,
+    log_tx: &watch::Sender<LogLevel>,
+    detected_ip_v4: Option<IpAddr>,
+    detected_ip_v6: Option<IpAddr>,
+    reload_state: &mut ReloadState,
+) -> Option<WatchManifest> {
+    let mut next_manifest = reload_config(
+        config_path,
+        config_tx,
+        log_tx,
+        detected_ip_v4,
+        detected_ip_v6,
+        reload_state,
+    );
+    let mut rechecks_left = HOT_RELOAD_STABLE_SNAPSHOTS.saturating_sub(1);
+
+    while rechecks_left > 0 {
+        let Some((snapshot_hash, candidate_hits)) = reload_state.pending_candidate() else {
+            break;
+        };
+
+        info!(
+            snapshot_hash,
+            candidate_hits,
+            required_hits = HOT_RELOAD_STABLE_SNAPSHOTS,
+            rechecks_left,
+            recheck_delay_ms = HOT_RELOAD_STABLE_RECHECK.as_millis(),
+            "config reload: scheduling internal stable recheck"
+        );
+        tokio::time::sleep(HOT_RELOAD_STABLE_RECHECK).await;
+
+        let recheck_manifest = reload_config(
+            config_path,
+            config_tx,
+            log_tx,
+            detected_ip_v4,
+            detected_ip_v6,
+            reload_state,
+        );
+        if recheck_manifest.is_some() {
+            next_manifest = recheck_manifest;
+        }
+
+        if reload_state.is_applied(snapshot_hash) {
+            info!(
+                snapshot_hash,
+                "config reload: applied after internal stable recheck"
+            );
+            break;
+        }
+
+        if reload_state.pending_candidate().is_none() {
+            info!(
+                snapshot_hash,
+                "config reload: internal stable recheck aborted"
+            );
+            break;
+        }
+
+        rechecks_left = rechecks_left.saturating_sub(1);
+    }
+
+    next_manifest
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Spawn the hot-reload watcher task.
@@ -1376,14 +1461,16 @@ pub fn spawn_config_watcher(
             tokio::time::sleep(HOT_RELOAD_DEBOUNCE).await;
             while notify_rx.try_recv().is_ok() {}
 
-            if let Some(next_manifest) = reload_config(
+            if let Some(next_manifest) = reload_with_internal_stable_rechecks(
                 &config_path,
                 &config_tx,
                 &log_tx,
                 detected_ip_v4,
                 detected_ip_v6,
                 &mut reload_state,
-            ) {
+            )
+            .await
+            {
                 apply_watch_manifest(
                     inotify_watcher.as_mut(),
                     poll_watcher.as_mut(),
@@ -1537,6 +1624,35 @@ mod tests {
         reload_config(&path, &config_tx, &log_tx, None, None, &mut reload_state).unwrap();
         assert_eq!(config_tx.borrow().general.ad_tag.as_deref(), Some(final_tag));
 
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn reload_cycle_applies_after_single_external_event() {
+        let initial_tag = "10101010101010101010101010101010";
+        let final_tag = "20202020202020202020202020202020";
+        let path = temp_config_path("telemt_hot_reload_single_event");
+
+        write_reload_config(&path, Some(initial_tag), None);
+        let initial_cfg = Arc::new(ProxyConfig::load(&path).unwrap());
+        let initial_hash = ProxyConfig::load_with_metadata(&path).unwrap().rendered_hash;
+        let (config_tx, _config_rx) = watch::channel(initial_cfg.clone());
+        let (log_tx, _log_rx) = watch::channel(initial_cfg.general.log_level.clone());
+        let mut reload_state = ReloadState::new(Some(initial_hash));
+
+        write_reload_config(&path, Some(final_tag), None);
+        reload_with_internal_stable_rechecks(
+            &path,
+            &config_tx,
+            &log_tx,
+            None,
+            None,
+            &mut reload_state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(config_tx.borrow().general.ad_tag.as_deref(), Some(final_tag));
         let _ = std::fs::remove_file(path);
     }
 

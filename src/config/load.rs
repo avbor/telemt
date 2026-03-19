@@ -378,6 +378,12 @@ impl ProxyConfig {
             ));
         }
 
+        if config.general.me_c2me_send_timeout_ms > 60_000 {
+            return Err(ProxyError::Config(
+                "general.me_c2me_send_timeout_ms must be within [0, 60000]".to_string(),
+            ));
+        }
+
         if config.general.me_reader_route_data_wait_ms > 20 {
             return Err(ProxyError::Config(
                 "general.me_reader_route_data_wait_ms must be within [0, 20]".to_string(),
@@ -640,12 +646,22 @@ impl ProxyConfig {
                 "general.me_route_backpressure_base_timeout_ms must be > 0".to_string(),
             ));
         }
+        if config.general.me_route_backpressure_base_timeout_ms > 5000 {
+            return Err(ProxyError::Config(
+                "general.me_route_backpressure_base_timeout_ms must be within [1, 5000]".to_string(),
+            ));
+        }
 
         if config.general.me_route_backpressure_high_timeout_ms
             < config.general.me_route_backpressure_base_timeout_ms
         {
             return Err(ProxyError::Config(
                 "general.me_route_backpressure_high_timeout_ms must be >= general.me_route_backpressure_base_timeout_ms".to_string(),
+            ));
+        }
+        if config.general.me_route_backpressure_high_timeout_ms > 5000 {
+            return Err(ProxyError::Config(
+                "general.me_route_backpressure_high_timeout_ms must be within [1, 5000]".to_string(),
             ));
         }
 
@@ -659,6 +675,18 @@ impl ProxyConfig {
         if !(10..=5000).contains(&config.general.me_route_no_writer_wait_ms) {
             return Err(ProxyError::Config(
                 "general.me_route_no_writer_wait_ms must be within [10, 5000]".to_string(),
+            ));
+        }
+
+        if !(50..=60_000).contains(&config.general.me_route_hybrid_max_wait_ms) {
+            return Err(ProxyError::Config(
+                "general.me_route_hybrid_max_wait_ms must be within [50, 60000]".to_string(),
+            ));
+        }
+
+        if config.general.me_route_blocking_send_timeout_ms > 5000 {
+            return Err(ProxyError::Config(
+                "general.me_route_blocking_send_timeout_ms must be within [0, 5000]".to_string(),
             ));
         }
 
@@ -719,6 +747,12 @@ impl ProxyConfig {
         if config.server.proxy_protocol_header_timeout_ms == 0 {
             return Err(ProxyError::Config(
                 "server.proxy_protocol_header_timeout_ms must be > 0".to_string(),
+            ));
+        }
+
+        if config.server.accept_permit_timeout_ms > 60_000 {
+            return Err(ProxyError::Config(
+                "server.accept_permit_timeout_ms must be within [0, 60000]".to_string(),
             ));
         }
 
@@ -1642,6 +1676,47 @@ mod tests {
         let cfg_valid = ProxyConfig::load(&path_valid).unwrap();
         assert_eq!(cfg_valid.general.rpc_proxy_req_every, 40);
         let _ = std::fs::remove_file(path_valid);
+    }
+
+    #[test]
+    fn me_route_backpressure_base_timeout_ms_out_of_range_is_rejected() {
+        let toml = r#"
+            [general]
+            me_route_backpressure_base_timeout_ms = 5001
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_me_route_backpressure_base_timeout_ms_out_of_range_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let err = ProxyConfig::load(&path).unwrap_err().to_string();
+        assert!(err.contains("general.me_route_backpressure_base_timeout_ms must be within [1, 5000]"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn me_route_backpressure_high_timeout_ms_out_of_range_is_rejected() {
+        let toml = r#"
+            [general]
+            me_route_backpressure_base_timeout_ms = 100
+            me_route_backpressure_high_timeout_ms = 5001
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_me_route_backpressure_high_timeout_ms_out_of_range_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let err = ProxyConfig::load(&path).unwrap_err().to_string();
+        assert!(err.contains("general.me_route_backpressure_high_timeout_ms must be within [1, 5000]"));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
