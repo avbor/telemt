@@ -74,9 +74,8 @@ impl MePool {
             debug!(
                 %addr,
                 wait_ms = expiry.saturating_duration_since(now).as_millis(),
-                "All ME endpoints are quarantined for the DC group; retrying earliest one"
+                "All ME endpoints are quarantined for the DC group; waiting for quarantine expiry"
             );
-            return vec![addr];
         }
 
         Vec::new()
