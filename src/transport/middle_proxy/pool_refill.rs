@@ -78,8 +78,8 @@ impl MePool {
             drop(guard);
             debug!(
                 %addr,
-                wait_ms = remaining.as_millis(),
-                "All ME endpoints quarantined; waiting for earliest to expire"
+                wait_ms = expiry.saturating_duration_since(now).as_millis(),
+                "All ME endpoints are quarantined for the DC group; waiting for quarantine expiry"
             );
             tokio::time::sleep(remaining).await;
             return vec![addr];

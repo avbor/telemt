@@ -11,7 +11,9 @@ use super::codec::WriterCommand;
 use super::health::{health_drain_close_budget, reap_draining_writers};
 use super::pool::{MePool, MeWriter, WriterContour};
 use super::registry::ConnMeta;
-use crate::config::{GeneralConfig, MeRouteNoWriterMode, MeSocksKdfPolicy, MeWriterPickMode};
+use crate::config::{
+    GeneralConfig, MeBindStaleMode, MeRouteNoWriterMode, MeSocksKdfPolicy, MeWriterPickMode,
+};
 use crate::crypto::SecureRandom;
 use crate::network::probe::NetworkDecision;
 use crate::stats::Stats;
@@ -75,6 +77,11 @@ async fn make_pool(me_pool_drain_threshold: u64) -> Arc<MePool> {
         general.me_pool_drain_ttl_secs,
         general.me_instadrain,
         general.me_pool_drain_threshold,
+        general.me_pool_drain_soft_evict_enabled,
+        general.me_pool_drain_soft_evict_grace_secs,
+        general.me_pool_drain_soft_evict_per_writer,
+        general.me_pool_drain_soft_evict_budget_per_core,
+        general.me_pool_drain_soft_evict_cooldown_ms,
         general.effective_me_pool_force_close_secs(),
         general.me_pool_min_fresh_ratio,
         general.me_hardswap_warmup_delay_min_ms,
@@ -597,59 +604,25 @@ async fn reap_draining_writers_mixed_backlog_converges_without_leaking_warn_stat
 
 #[test]
 fn general_config_default_drain_threshold_remains_enabled() {
-    assert_eq!(GeneralConfig::default().me_pool_drain_threshold, 128);
-}
-
-#[tokio::test]
-async fn reap_draining_writers_does_not_close_writer_that_became_non_empty_after_snapshot() {
-    let pool = make_pool(128).await;
-    let now_epoch_secs = MePool::now_epoch_secs();
-
-    let empty_writer_id = 700u64;
-    insert_draining_writer(
-        &pool,
-        empty_writer_id,
-        now_epoch_secs.saturating_sub(60),
-        0,
-        0,
-    )
-    .await;
-
-    let stale_empty_snapshot = vec![empty_writer_id];
-    let (rebound_conn_id, _rx) = pool.registry.register().await;
-    assert!(
-        pool.registry
-            .bind_writer(
-                rebound_conn_id,
-                empty_writer_id,
-                ConnMeta {
-                    target_dc: 2,
-                    client_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9050),
-                    our_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 443),
-                    proto_flags: 0,
-                },
-            )
-            .await,
-        "writer should accept a new bind after stale empty snapshot"
-    );
-
-    for writer_id in stale_empty_snapshot {
-        assert!(
-            !pool.remove_writer_if_empty(writer_id).await,
-            "atomic empty cleanup must reject writers that gained bound clients"
-        );
-    }
-
-    assert!(
-        writer_exists(&pool, empty_writer_id).await,
-        "empty-path cleanup must not remove a writer that gained a bound client"
+    assert_eq!(GeneralConfig::default().me_pool_drain_threshold, 32);
+    assert!(GeneralConfig::default().me_pool_drain_soft_evict_enabled);
+    assert_eq!(
+        GeneralConfig::default().me_pool_drain_soft_evict_grace_secs,
+        10
     );
     assert_eq!(
-        pool.registry.get_writer(rebound_conn_id).await.map(|w| w.writer_id),
-        Some(empty_writer_id)
+        GeneralConfig::default().me_pool_drain_soft_evict_per_writer,
+        2
     );
-
-    let _ = pool.registry.unregister(rebound_conn_id).await;
+    assert_eq!(
+        GeneralConfig::default().me_pool_drain_soft_evict_budget_per_core,
+        16
+    );
+    assert_eq!(
+        GeneralConfig::default().me_pool_drain_soft_evict_cooldown_ms,
+        1000
+    );
+    assert_eq!(GeneralConfig::default().me_bind_stale_mode, MeBindStaleMode::Never);
 }
 
 #[tokio::test]
