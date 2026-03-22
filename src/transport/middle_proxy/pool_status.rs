@@ -40,7 +40,6 @@ pub(crate) struct MeApiDcStatusSnapshot {
     pub floor_max: usize,
     pub floor_capped: bool,
     pub alive_writers: usize,
-    pub coverage_ratio: f64,
     pub coverage_pct: f64,
     pub fresh_alive_writers: usize,
     pub fresh_coverage_pct: f64,
@@ -63,7 +62,6 @@ pub(crate) struct MeApiStatusSnapshot {
     pub available_pct: f64,
     pub required_writers: usize,
     pub alive_writers: usize,
-    pub coverage_ratio: f64,
     pub coverage_pct: f64,
     pub fresh_alive_writers: usize,
     pub fresh_coverage_pct: f64,
@@ -126,12 +124,6 @@ pub(crate) struct MeApiRuntimeSnapshot {
     pub me_reconnect_backoff_cap_ms: u64,
     pub me_reconnect_fast_retry_count: u32,
     pub me_pool_drain_ttl_secs: u64,
-    pub me_instadrain: bool,
-    pub me_pool_drain_soft_evict_enabled: bool,
-    pub me_pool_drain_soft_evict_grace_secs: u64,
-    pub me_pool_drain_soft_evict_per_writer: u8,
-    pub me_pool_drain_soft_evict_budget_per_core: u16,
-    pub me_pool_drain_soft_evict_cooldown_ms: u64,
     pub me_pool_force_close_secs: u64,
     pub me_pool_min_fresh_ratio: f32,
     pub me_bind_stale_mode: &'static str,
@@ -285,9 +277,8 @@ impl MePool {
             let drain_started_at_epoch_secs = writer
                 .draining_started_at_epoch_secs
                 .load(Ordering::Relaxed);
-            let drain_deadline_epoch_secs = writer
-                .drain_deadline_epoch_secs
-                .load(Ordering::Relaxed);
+            let drain_deadline_epoch_secs =
+                writer.drain_deadline_epoch_secs.load(Ordering::Relaxed);
             let drain_started_at_epoch_secs =
                 (drain_started_at_epoch_secs != 0).then_some(drain_started_at_epoch_secs);
             let drain_deadline_epoch_secs =
@@ -302,20 +293,20 @@ impl MePool {
                 WriterContour::Draining => "draining",
             };
 
-            if !draining {
-                if let Some(dc_idx) = dc {
-                    *live_writers_by_dc_endpoint
-                        .entry((dc_idx, endpoint))
-                        .or_insert(0) += 1;
-                    *live_writers_by_dc.entry(dc_idx).or_insert(0) += 1;
-                    if let Some(ema_ms) = rtt_ema_ms {
-                        let entry = dc_rtt_agg.entry(dc_idx).or_insert((0.0, 0));
-                        entry.0 += ema_ms;
-                        entry.1 += 1;
-                    }
-                    if matches_active_generation && in_desired_map {
-                        *fresh_writers_by_dc.entry(dc_idx).or_insert(0) += 1;
-                    }
+            if !draining
+                && let Some(dc_idx) = dc
+            {
+                *live_writers_by_dc_endpoint
+                    .entry((dc_idx, endpoint))
+                    .or_insert(0) += 1;
+                *live_writers_by_dc.entry(dc_idx).or_insert(0) += 1;
+                if let Some(ema_ms) = rtt_ema_ms {
+                    let entry = dc_rtt_agg.entry(dc_idx).or_insert((0.0, 0));
+                    entry.0 += ema_ms;
+                    entry.1 += 1;
+                }
+                if matches_active_generation && in_desired_map {
+                    *fresh_writers_by_dc.entry(dc_idx).or_insert(0) += 1;
                 }
             }
 
@@ -345,8 +336,6 @@ impl MePool {
         let mut available_endpoints = 0usize;
         let mut alive_writers = 0usize;
         let mut fresh_alive_writers = 0usize;
-        let mut coverage_ratio_dcs_total = 0usize;
-        let mut coverage_ratio_dcs_covered = 0usize;
         let floor_mode = self.floor_mode();
         let adaptive_cpu_cores = (self
             .me_adaptive_floor_cpu_cores_effective
@@ -381,9 +370,10 @@ impl MePool {
                 self.me_adaptive_floor_max_extra_writers_multi_per_core
                     .load(Ordering::Relaxed) as usize
             };
-            let floor_max = base_required.saturating_add(adaptive_cpu_cores.saturating_mul(extra_per_core));
-            let floor_capped = matches!(floor_mode, MeFloorMode::Adaptive)
-                && dc_required_writers < base_required;
+            let floor_max =
+                base_required.saturating_add(adaptive_cpu_cores.saturating_mul(extra_per_core));
+            let floor_capped =
+                matches!(floor_mode, MeFloorMode::Adaptive) && dc_required_writers < base_required;
             let dc_alive_writers = live_writers_by_dc.get(&dc).copied().unwrap_or(0);
             let dc_fresh_alive_writers = fresh_writers_by_dc.get(&dc).copied().unwrap_or(0);
             let dc_load = activity
@@ -398,12 +388,6 @@ impl MePool {
             available_endpoints += dc_available_endpoints;
             alive_writers += dc_alive_writers;
             fresh_alive_writers += dc_fresh_alive_writers;
-            if endpoint_count > 0 {
-                coverage_ratio_dcs_total += 1;
-                if dc_alive_writers > 0 {
-                    coverage_ratio_dcs_covered += 1;
-                }
-            }
 
             dcs.push(MeApiDcStatusSnapshot {
                 dc,
@@ -426,11 +410,6 @@ impl MePool {
                 floor_max,
                 floor_capped,
                 alive_writers: dc_alive_writers,
-                coverage_ratio: if endpoint_count > 0 && dc_alive_writers > 0 {
-                    100.0
-                } else {
-                    0.0
-                },
                 coverage_pct: ratio_pct(dc_alive_writers, dc_required_writers),
                 fresh_alive_writers: dc_fresh_alive_writers,
                 fresh_coverage_pct: ratio_pct(dc_fresh_alive_writers, dc_required_writers),
@@ -447,7 +426,6 @@ impl MePool {
             available_pct: ratio_pct(available_endpoints, configured_endpoints),
             required_writers,
             alive_writers,
-            coverage_ratio: ratio_pct(coverage_ratio_dcs_covered, coverage_ratio_dcs_total),
             coverage_pct: ratio_pct(alive_writers, required_writers),
             fresh_alive_writers,
             fresh_coverage_pct: ratio_pct(fresh_alive_writers, required_writers),
@@ -462,8 +440,8 @@ impl MePool {
         let pending_started_at = self
             .pending_hardswap_started_at_epoch_secs
             .load(Ordering::Relaxed);
-        let pending_hardswap_age_secs = (pending_started_at > 0)
-            .then_some(now_epoch_secs.saturating_sub(pending_started_at));
+        let pending_hardswap_age_secs =
+            (pending_started_at > 0).then_some(now_epoch_secs.saturating_sub(pending_started_at));
 
         let mut quarantined_endpoints = Vec::<MeApiQuarantinedEndpointSnapshot>::new();
         {
@@ -525,16 +503,20 @@ impl MePool {
                 .load(Ordering::Relaxed) as u16,
             adaptive_floor_max_extra_writers_single_per_core: self
                 .me_adaptive_floor_max_extra_writers_single_per_core
-                .load(Ordering::Relaxed) as u16,
+                .load(Ordering::Relaxed)
+                as u16,
             adaptive_floor_max_extra_writers_multi_per_core: self
                 .me_adaptive_floor_max_extra_writers_multi_per_core
-                .load(Ordering::Relaxed) as u16,
+                .load(Ordering::Relaxed)
+                as u16,
             adaptive_floor_max_active_writers_per_core: self
                 .me_adaptive_floor_max_active_writers_per_core
-                .load(Ordering::Relaxed) as u16,
+                .load(Ordering::Relaxed)
+                as u16,
             adaptive_floor_max_warm_writers_per_core: self
                 .me_adaptive_floor_max_warm_writers_per_core
-                .load(Ordering::Relaxed) as u16,
+                .load(Ordering::Relaxed)
+                as u16,
             adaptive_floor_max_active_writers_global: self
                 .me_adaptive_floor_max_active_writers_global
                 .load(Ordering::Relaxed),
@@ -584,26 +566,10 @@ impl MePool {
             me_reconnect_backoff_cap_ms: self.me_reconnect_backoff_cap.as_millis() as u64,
             me_reconnect_fast_retry_count: self.me_reconnect_fast_retry_count,
             me_pool_drain_ttl_secs: self.me_pool_drain_ttl_secs.load(Ordering::Relaxed),
-            me_instadrain: self.me_instadrain.load(Ordering::Relaxed),
-            me_pool_drain_soft_evict_enabled: self
-                .me_pool_drain_soft_evict_enabled
-                .load(Ordering::Relaxed),
-            me_pool_drain_soft_evict_grace_secs: self
-                .me_pool_drain_soft_evict_grace_secs
-                .load(Ordering::Relaxed),
-            me_pool_drain_soft_evict_per_writer: self
-                .me_pool_drain_soft_evict_per_writer
-                .load(Ordering::Relaxed),
-            me_pool_drain_soft_evict_budget_per_core: self
-                .me_pool_drain_soft_evict_budget_per_core
-                .load(Ordering::Relaxed)
-                .min(u16::MAX as u32) as u16,
-            me_pool_drain_soft_evict_cooldown_ms: self
-                .me_pool_drain_soft_evict_cooldown_ms
-                .load(Ordering::Relaxed),
             me_pool_force_close_secs: self.me_pool_force_close_secs.load(Ordering::Relaxed),
             me_pool_min_fresh_ratio: Self::permille_to_ratio(
-                self.me_pool_min_fresh_ratio_permille.load(Ordering::Relaxed),
+                self.me_pool_min_fresh_ratio_permille
+                    .load(Ordering::Relaxed),
             ),
             me_bind_stale_mode: bind_stale_mode_label(self.bind_stale_mode()),
             me_bind_stale_ttl_secs: self.me_bind_stale_ttl_secs.load(Ordering::Relaxed),
@@ -625,9 +591,7 @@ impl MePool {
             me_single_endpoint_shadow_rotate_every_secs: self
                 .me_single_endpoint_shadow_rotate_every_secs
                 .load(Ordering::Relaxed),
-            me_deterministic_writer_sort: self
-                .me_deterministic_writer_sort
-                .load(Ordering::Relaxed),
+            me_deterministic_writer_sort: self.me_deterministic_writer_sort.load(Ordering::Relaxed),
             me_writer_pick_mode: writer_pick_mode_label(self.writer_pick_mode()),
             me_writer_pick_sample_size: self.writer_pick_sample_size() as u8,
             me_socks_kdf_policy: socks_kdf_policy_label(self.socks_kdf_policy()),

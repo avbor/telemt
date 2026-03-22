@@ -5,7 +5,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use shadowsocks::config::ServerConfig as ShadowsocksServerConfig;
 use tracing::warn;
@@ -360,6 +360,131 @@ impl ProxyConfig {
             ));
         }
 
+        if config.timeouts.client_handshake == 0 {
+            return Err(ProxyError::Config(
+                "timeouts.client_handshake must be > 0".to_string(),
+            ));
+        }
+
+        let handshake_timeout_ms = config
+            .timeouts
+            .client_handshake
+            .checked_mul(1000)
+            .ok_or_else(|| {
+                ProxyError::Config(
+                    "timeouts.client_handshake is too large to validate milliseconds budget"
+                        .to_string(),
+                )
+            })?;
+
+        if config.censorship.server_hello_delay_max_ms >= handshake_timeout_ms {
+            return Err(ProxyError::Config(
+                "censorship.server_hello_delay_max_ms must be < timeouts.client_handshake * 1000"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_bucket_floor_bytes == 0 {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_bucket_floor_bytes must be > 0".to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_bucket_cap_bytes
+            < config.censorship.mask_shape_bucket_floor_bytes
+        {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_bucket_cap_bytes must be >= censorship.mask_shape_bucket_floor_bytes"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_above_cap_blur && !config.censorship.mask_shape_hardening {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_above_cap_blur requires censorship.mask_shape_hardening = true"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_hardening_aggressive_mode
+            && !config.censorship.mask_shape_hardening
+        {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_hardening_aggressive_mode requires censorship.mask_shape_hardening = true"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_above_cap_blur
+            && config.censorship.mask_shape_above_cap_blur_max_bytes == 0
+        {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_above_cap_blur_max_bytes must be > 0 when censorship.mask_shape_above_cap_blur is enabled"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_shape_above_cap_blur_max_bytes > 1_048_576 {
+            return Err(ProxyError::Config(
+                "censorship.mask_shape_above_cap_blur_max_bytes must be <= 1048576".to_string(),
+            ));
+        }
+
+        if config.censorship.mask_timing_normalization_ceiling_ms
+            < config.censorship.mask_timing_normalization_floor_ms
+        {
+            return Err(ProxyError::Config(
+                "censorship.mask_timing_normalization_ceiling_ms must be >= censorship.mask_timing_normalization_floor_ms"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_timing_normalization_enabled
+            && config.censorship.mask_timing_normalization_floor_ms == 0
+        {
+            return Err(ProxyError::Config(
+                "censorship.mask_timing_normalization_floor_ms must be > 0 when censorship.mask_timing_normalization_enabled is true"
+                    .to_string(),
+            ));
+        }
+
+        if config.censorship.mask_timing_normalization_ceiling_ms > 60_000 {
+            return Err(ProxyError::Config(
+                "censorship.mask_timing_normalization_ceiling_ms must be <= 60000".to_string(),
+            ));
+        }
+
+        if config.timeouts.relay_client_idle_soft_secs == 0 {
+            return Err(ProxyError::Config(
+                "timeouts.relay_client_idle_soft_secs must be > 0".to_string(),
+            ));
+        }
+
+        if config.timeouts.relay_client_idle_hard_secs == 0 {
+            return Err(ProxyError::Config(
+                "timeouts.relay_client_idle_hard_secs must be > 0".to_string(),
+            ));
+        }
+
+        if config.timeouts.relay_client_idle_hard_secs < config.timeouts.relay_client_idle_soft_secs
+        {
+            return Err(ProxyError::Config(
+                "timeouts.relay_client_idle_hard_secs must be >= timeouts.relay_client_idle_soft_secs"
+                    .to_string(),
+            ));
+        }
+
+        if config
+            .timeouts
+            .relay_idle_grace_after_downstream_activity_secs
+            > config.timeouts.relay_client_idle_hard_secs
+        {
+            return Err(ProxyError::Config(
+                "timeouts.relay_idle_grace_after_downstream_activity_secs must be <= timeouts.relay_client_idle_hard_secs"
+                    .to_string(),
+            ));
+        }
+
         if config.general.me_writer_cmd_channel_capacity == 0 {
             return Err(ProxyError::Config(
                 "general.me_writer_cmd_channel_capacity must be > 0".to_string(),
@@ -405,6 +530,19 @@ impl ProxyConfig {
         if config.general.me_d2c_flush_batch_max_delay_us > 5000 {
             return Err(ProxyError::Config(
                 "general.me_d2c_flush_batch_max_delay_us must be within [0, 5000]".to_string(),
+            ));
+        }
+
+        if config.general.me_quota_soft_overshoot_bytes > 16 * 1024 * 1024 {
+            return Err(ProxyError::Config(
+                "general.me_quota_soft_overshoot_bytes must be within [0, 16777216]".to_string(),
+            ));
+        }
+
+        if !(4096..=16 * 1024 * 1024).contains(&config.general.me_d2c_frame_buf_shrink_threshold_bytes) {
+            return Err(ProxyError::Config(
+                "general.me_d2c_frame_buf_shrink_threshold_bytes must be within [4096, 16777216]"
+                    .to_string(),
             ));
         }
 
@@ -648,7 +786,8 @@ impl ProxyConfig {
         }
         if config.general.me_route_backpressure_base_timeout_ms > 5000 {
             return Err(ProxyError::Config(
-                "general.me_route_backpressure_base_timeout_ms must be within [1, 5000]".to_string(),
+                "general.me_route_backpressure_base_timeout_ms must be within [1, 5000]"
+                    .to_string(),
             ));
         }
 
@@ -661,7 +800,8 @@ impl ProxyConfig {
         }
         if config.general.me_route_backpressure_high_timeout_ms > 5000 {
             return Err(ProxyError::Config(
-                "general.me_route_backpressure_high_timeout_ms must be within [1, 5000]".to_string(),
+                "general.me_route_backpressure_high_timeout_ms must be within [1, 5000]"
+                    .to_string(),
             ));
         }
 
@@ -860,7 +1000,7 @@ impl ProxyConfig {
         if !config.censorship.tls_emulation
             && config.censorship.fake_cert_len == default_fake_cert_len()
         {
-            config.censorship.fake_cert_len = rand::rng().gen_range(1024..4096);
+            config.censorship.fake_cert_len = rand::rng().random_range(1024..4096);
         }
 
         // Resolve listen_tcp: explicit value wins, otherwise auto-detect.
@@ -981,6 +1121,18 @@ impl ProxyConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/load_idle_policy_tests.rs"]
+mod load_idle_policy_tests;
+
+#[cfg(test)]
+#[path = "tests/load_security_tests.rs"]
+mod load_security_tests;
+
+#[cfg(test)]
+#[path = "tests/load_mask_shape_security_tests.rs"]
+mod load_mask_shape_security_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1697,7 +1849,9 @@ mod tests {
         let path = dir.join("telemt_me_route_backpressure_base_timeout_ms_out_of_range_test.toml");
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
-        assert!(err.contains("general.me_route_backpressure_base_timeout_ms must be within [1, 5000]"));
+        assert!(
+            err.contains("general.me_route_backpressure_base_timeout_ms must be within [1, 5000]")
+        );
         let _ = std::fs::remove_file(path);
     }
 
@@ -1718,7 +1872,9 @@ mod tests {
         let path = dir.join("telemt_me_route_backpressure_high_timeout_ms_out_of_range_test.toml");
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
-        assert!(err.contains("general.me_route_backpressure_high_timeout_ms must be within [1, 5000]"));
+        assert!(
+            err.contains("general.me_route_backpressure_high_timeout_ms must be within [1, 5000]")
+        );
         let _ = std::fs::remove_file(path);
     }
 

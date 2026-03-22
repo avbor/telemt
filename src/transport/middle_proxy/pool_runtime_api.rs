@@ -157,7 +157,8 @@ impl MePool {
                     },
                     state: state.as_str(),
                     state_since_epoch_secs: self.family_runtime_state_since_epoch_secs(family),
-                    suppressed_until_epoch_secs: (suppressed_until != 0).then_some(suppressed_until),
+                    suppressed_until_epoch_secs: (suppressed_until != 0)
+                        .then_some(suppressed_until),
                     fail_streak: self.family_fail_streak(family),
                     recover_success_streak: self.family_recover_success_streak(family),
                 }

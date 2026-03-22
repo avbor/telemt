@@ -1,7 +1,11 @@
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI32, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{Mutex, Notify, RwLock, mpsc};
@@ -220,6 +224,7 @@ pub struct MePool {
     pub(super) refill_inflight: Arc<Mutex<HashSet<RefillEndpointKey>>>,
     pub(super) refill_inflight_dc: Arc<Mutex<HashSet<RefillDcKey>>>,
     pub(super) conn_count: AtomicUsize,
+    pub(super) draining_active_runtime: AtomicU64,
     pub(super) stats: Arc<crate::stats::Stats>,
     pub(super) generation: AtomicU64,
     pub(super) active_generation: AtomicU64,
@@ -254,8 +259,6 @@ pub struct MePool {
     pub(super) me_reader_route_data_wait_ms: Arc<AtomicU64>,
     pub(super) me_route_no_writer_mode: AtomicU8,
     pub(super) me_route_no_writer_wait: Duration,
-    pub(super) me_route_hybrid_max_wait: Duration,
-    pub(super) me_route_blocking_send_timeout: Duration,
     pub(super) me_route_inline_recovery_attempts: u32,
     pub(super) me_route_inline_recovery_wait: Duration,
     pub(super) me_health_interval_ms_unhealthy: AtomicU64,
@@ -393,8 +396,6 @@ impl MePool {
         me_warn_rate_limit_ms: u64,
         me_route_no_writer_mode: MeRouteNoWriterMode,
         me_route_no_writer_wait_ms: u64,
-        me_route_hybrid_max_wait_ms: u64,
-        me_route_blocking_send_timeout_ms: u64,
         me_route_inline_recovery_attempts: u32,
         me_route_inline_recovery_wait_ms: u64,
     ) -> Arc<Self> {
@@ -536,6 +537,7 @@ impl MePool {
             refill_inflight: Arc::new(Mutex::new(HashSet::new())),
             refill_inflight_dc: Arc::new(Mutex::new(HashSet::new())),
             conn_count: AtomicUsize::new(0),
+            draining_active_runtime: AtomicU64::new(0),
             generation: AtomicU64::new(1),
             active_generation: AtomicU64::new(1),
             warm_generation: AtomicU64::new(0),
@@ -549,7 +551,9 @@ impl MePool {
             me_instadrain: AtomicBool::new(me_instadrain),
             me_pool_drain_threshold: AtomicU64::new(me_pool_drain_threshold),
             me_pool_drain_soft_evict_enabled: AtomicBool::new(me_pool_drain_soft_evict_enabled),
-            me_pool_drain_soft_evict_grace_secs: AtomicU64::new(me_pool_drain_soft_evict_grace_secs),
+            me_pool_drain_soft_evict_grace_secs: AtomicU64::new(
+                me_pool_drain_soft_evict_grace_secs,
+            ),
             me_pool_drain_soft_evict_per_writer: AtomicU8::new(
                 me_pool_drain_soft_evict_per_writer.max(1),
             ),
@@ -581,10 +585,6 @@ impl MePool {
             me_reader_route_data_wait_ms: Arc::new(AtomicU64::new(me_reader_route_data_wait_ms)),
             me_route_no_writer_mode: AtomicU8::new(me_route_no_writer_mode.as_u8()),
             me_route_no_writer_wait: Duration::from_millis(me_route_no_writer_wait_ms),
-            me_route_hybrid_max_wait: Duration::from_millis(me_route_hybrid_max_wait_ms),
-            me_route_blocking_send_timeout: Duration::from_millis(
-                me_route_blocking_send_timeout_ms,
-            ),
             me_route_inline_recovery_attempts,
             me_route_inline_recovery_wait: Duration::from_millis(me_route_inline_recovery_wait_ms),
             me_health_interval_ms_unhealthy: AtomicU64::new(me_health_interval_ms_unhealthy.max(1)),
@@ -621,6 +621,7 @@ impl MePool {
         self.runtime_ready.load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub(super) fn set_family_runtime_state(
         &self,
         family: IpFamily,
@@ -757,10 +758,7 @@ impl MePool {
     }
 
     pub(crate) fn last_drain_gate_block_reason(&self) -> MeDrainGateReason {
-        MeDrainGateReason::from_u8(
-            self.me_last_drain_gate_block_reason
-                .load(Ordering::Relaxed),
-        )
+        MeDrainGateReason::from_u8(self.me_last_drain_gate_block_reason.load(Ordering::Relaxed))
     }
 
     pub(crate) fn last_drain_gate_updated_at_epoch_secs(&self) -> u64 {
@@ -879,14 +877,18 @@ impl MePool {
             .store(floor_mode.as_u8(), Ordering::Relaxed);
         self.me_adaptive_floor_idle_secs
             .store(adaptive_floor_idle_secs, Ordering::Relaxed);
-        self.me_adaptive_floor_min_writers_single_endpoint
-            .store(adaptive_floor_min_writers_single_endpoint, Ordering::Relaxed);
+        self.me_adaptive_floor_min_writers_single_endpoint.store(
+            adaptive_floor_min_writers_single_endpoint,
+            Ordering::Relaxed,
+        );
         self.me_adaptive_floor_min_writers_multi_endpoint
             .store(adaptive_floor_min_writers_multi_endpoint, Ordering::Relaxed);
         self.me_adaptive_floor_recover_grace_secs
             .store(adaptive_floor_recover_grace_secs, Ordering::Relaxed);
-        self.me_adaptive_floor_writers_per_core_total
-            .store(adaptive_floor_writers_per_core_total as u32, Ordering::Relaxed);
+        self.me_adaptive_floor_writers_per_core_total.store(
+            adaptive_floor_writers_per_core_total as u32,
+            Ordering::Relaxed,
+        );
         self.me_adaptive_floor_cpu_cores_override
             .store(adaptive_floor_cpu_cores_override as u32, Ordering::Relaxed);
         self.me_adaptive_floor_max_extra_writers_single_per_core
@@ -899,16 +901,14 @@ impl MePool {
                 adaptive_floor_max_extra_writers_multi_per_core as u32,
                 Ordering::Relaxed,
             );
-        self.me_adaptive_floor_max_active_writers_per_core
-            .store(
-                adaptive_floor_max_active_writers_per_core as u32,
-                Ordering::Relaxed,
-            );
-        self.me_adaptive_floor_max_warm_writers_per_core
-            .store(
-                adaptive_floor_max_warm_writers_per_core as u32,
-                Ordering::Relaxed,
-            );
+        self.me_adaptive_floor_max_active_writers_per_core.store(
+            adaptive_floor_max_active_writers_per_core as u32,
+            Ordering::Relaxed,
+        );
+        self.me_adaptive_floor_max_warm_writers_per_core.store(
+            adaptive_floor_max_warm_writers_per_core as u32,
+            Ordering::Relaxed,
+        );
         self.me_adaptive_floor_max_active_writers_global
             .store(adaptive_floor_max_active_writers_global, Ordering::Relaxed);
         self.me_adaptive_floor_max_warm_writers_global
@@ -985,34 +985,66 @@ impl MePool {
         Some(Duration::from_secs(secs))
     }
 
+    #[allow(dead_code)]
     pub(super) fn drain_soft_evict_enabled(&self) -> bool {
         self.me_pool_drain_soft_evict_enabled
             .load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub(super) fn drain_soft_evict_grace_secs(&self) -> u64 {
         self.me_pool_drain_soft_evict_grace_secs
             .load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub(super) fn drain_soft_evict_per_writer(&self) -> usize {
         self.me_pool_drain_soft_evict_per_writer
             .load(Ordering::Relaxed)
             .max(1) as usize
     }
 
+    #[allow(dead_code)]
     pub(super) fn drain_soft_evict_budget_per_core(&self) -> usize {
         self.me_pool_drain_soft_evict_budget_per_core
             .load(Ordering::Relaxed)
             .max(1) as usize
     }
 
+    #[allow(dead_code)]
     pub(super) fn drain_soft_evict_cooldown(&self) -> Duration {
         Duration::from_millis(
             self.me_pool_drain_soft_evict_cooldown_ms
                 .load(Ordering::Relaxed)
                 .max(1),
         )
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn draining_active_runtime(&self) -> u64 {
+        self.draining_active_runtime.load(Ordering::Relaxed)
+    }
+
+    pub(super) fn increment_draining_active_runtime(&self) {
+        self.draining_active_runtime.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn decrement_draining_active_runtime(&self) {
+        let mut current = self.draining_active_runtime.load(Ordering::Relaxed);
+        loop {
+            if current == 0 {
+                break;
+            }
+            match self.draining_active_runtime.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
     }
 
     pub(super) async fn key_selector(&self) -> u32 {
@@ -1550,11 +1582,19 @@ impl MePool {
     }
 
     pub(super) fn health_interval_unhealthy(&self) -> Duration {
-        Duration::from_millis(self.me_health_interval_ms_unhealthy.load(Ordering::Relaxed).max(1))
+        Duration::from_millis(
+            self.me_health_interval_ms_unhealthy
+                .load(Ordering::Relaxed)
+                .max(1),
+        )
     }
 
     pub(super) fn health_interval_healthy(&self) -> Duration {
-        Duration::from_millis(self.me_health_interval_ms_healthy.load(Ordering::Relaxed).max(1))
+        Duration::from_millis(
+            self.me_health_interval_ms_healthy
+                .load(Ordering::Relaxed)
+                .max(1),
+        )
     }
 
     pub(super) fn warn_rate_limit_duration(&self) -> Duration {
