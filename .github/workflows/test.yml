@@ -1,4 +1,4 @@
-name: Analyze
+name: Check
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
 # ==========================
@@ -21,22 +25,19 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain (rustfmt only)
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - run: cargo fmt -- --check
 
 # ==========================
-# Tests + Clippy + Udeps
+# Tests
 # ==========================
   test:
-    name: Test / Clippy / Udeps
+    name: Test
     runs-on: ubuntu-latest
 
     permissions:
@@ -45,15 +46,11 @@ jobs:
       checks: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry & build artifacts
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -64,15 +61,67 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run tests
-        run: cargo test --verbose
+      - run: cargo test --verbose
 
-      # clippy не валит билд (осознанно)
-      - name: Run clippy
-        run: cargo clippy -- --cap-lints warn
+# ==========================
+# Clippy
+# ==========================
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - run: cargo clippy -- --cap-lints warn
+
+# ==========================
+# Udeps
+# ==========================
+  udeps:
+    name: Udeps
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Install cargo-udeps
         run: cargo install cargo-udeps || true
 
-      - name: Check for unused dependencies
-        run: cargo udeps || true
+      # тоже не валит билд
+      - run: cargo udeps || true
