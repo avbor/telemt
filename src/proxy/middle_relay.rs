@@ -2098,3 +2098,7 @@ mod middle_relay_tiny_frame_debt_proto_chunking_security_tests;
 #[cfg(test)]
 #[path = "tests/middle_relay_atomic_quota_invariant_tests.rs"]
 mod middle_relay_atomic_quota_invariant_tests;
+
+#[cfg(test)]
+#[path = "tests/middle_relay_baseline_invariant_tests.rs"]
+mod middle_relay_baseline_invariant_tests;

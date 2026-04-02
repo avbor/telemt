@@ -75,3 +75,7 @@ pub use handshake::*;
 pub use masking::*;
 #[allow(unused_imports)]
 pub use relay::*;
+
+#[cfg(test)]
+#[path = "tests/test_harness_common.rs"]
+mod test_harness_common;

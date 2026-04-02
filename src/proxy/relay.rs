@@ -671,3 +671,7 @@ mod relay_watchdog_delta_security_tests;
 #[cfg(test)]
 #[path = "tests/relay_atomic_quota_invariant_tests.rs"]
 mod relay_atomic_quota_invariant_tests;
+
+#[cfg(test)]
+#[path = "tests/relay_baseline_invariant_tests.rs"]
+mod relay_baseline_invariant_tests;

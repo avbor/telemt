@@ -593,7 +593,7 @@ async fn maybe_apply_server_hello_delay(config: &ProxyConfig) {
     let delay_ms = if max == min {
         max
     } else {
-        rand::rng().random_range(min..=max)
+        crate::proxy::masking::sample_lognormal_percentile_bounded(min, max, &mut rand::rng())
     };
 
     if delay_ms > 0 {
@@ -1122,6 +1122,10 @@ mod timing_manual_bench_tests;
 #[cfg(test)]
 #[path = "tests/handshake_key_material_zeroization_security_tests.rs"]
 mod handshake_key_material_zeroization_security_tests;
+
+#[cfg(test)]
+#[path = "tests/handshake_baseline_invariant_tests.rs"]
+mod handshake_baseline_invariant_tests;
 
 /// Compile-time guard: HandshakeSuccess holds cryptographic key material and
 /// must never be Copy.  A Copy impl would allow silent key duplication,
