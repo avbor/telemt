@@ -8,7 +8,7 @@ use std::time::Instant;
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 
-use crate::proxy::handshake::{AuthProbeState, AuthProbeSaturationState};
+use crate::proxy::handshake::{AuthProbeSaturationState, AuthProbeState};
 use crate::proxy::middle_relay::{DesyncDedupRotationState, RelayIdleCandidateRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,7 +136,8 @@ impl ProxySharedState {
     }
 
     pub(crate) fn set_conntrack_pressure_active(&self, active: bool) {
-        self.conntrack_pressure_active.store(active, Ordering::Relaxed);
+        self.conntrack_pressure_active
+            .store(active, Ordering::Relaxed);
     }
 
     pub(crate) fn conntrack_pressure_active(&self) -> bool {

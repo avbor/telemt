@@ -246,7 +246,9 @@ pub fn seed_tier_for_user(user: &str) -> AdaptiveTier {
         if now.saturating_duration_since(value.seen_at) <= PROFILE_TTL {
             return value.tier;
         }
-        profiles().remove_if(user, |_, v| now.saturating_duration_since(v.seen_at) > PROFILE_TTL);
+        profiles().remove_if(user, |_, v| {
+            now.saturating_duration_since(v.seen_at) > PROFILE_TTL
+        });
     }
     AdaptiveTier::Base
 }

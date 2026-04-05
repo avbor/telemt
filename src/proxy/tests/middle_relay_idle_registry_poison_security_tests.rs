@@ -25,7 +25,10 @@ fn blackhat_registry_poison_recovers_with_fail_closed_reset_and_pressure_account
 
     // Helper lock must recover from poison, reset stale state, and continue.
     assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), 42));
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(42));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(42)
+    );
 
     let before = relay_pressure_event_seq_for_testing(shared.as_ref());
     note_relay_pressure_event_for_testing(shared.as_ref());
@@ -54,11 +57,17 @@ fn clear_state_helper_must_reset_poisoned_registry_for_deterministic_fifo_tests(
 
     clear_relay_idle_pressure_state_for_testing_in_shared(shared.as_ref());
 
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), None);
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        None
+    );
     assert_eq!(relay_pressure_event_seq_for_testing(shared.as_ref()), 0);
 
     assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), 7));
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(7));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(7)
+    );
 
     clear_relay_idle_pressure_state_for_testing_in_shared(shared.as_ref());
 }

@@ -28,8 +28,8 @@ use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*, reload};
 
 use crate::api;
-use crate::conntrack_control;
 use crate::config::{LogLevel, ProxyConfig};
+use crate::conntrack_control;
 use crate::crypto::SecureRandom;
 use crate::ip_tracker::UserIpTracker;
 use crate::network::probe::{decide_network_capabilities, log_probe_result, run_probe};
@@ -136,18 +136,17 @@ async fn run_inner(
             } else {
                 let default = ProxyConfig::default();
 
-                let serialized = match toml::to_string_pretty(&default)
-                    .or_else(|_| toml::to_string(&default))
-                {
-                    Ok(value) => Some(value),
-                    Err(serialize_error) => {
-                        eprintln!(
-                            "[telemt] Warning: failed to serialize default config: {}",
-                            serialize_error
-                        );
-                        None
-                    }
-                };
+                let serialized =
+                    match toml::to_string_pretty(&default).or_else(|_| toml::to_string(&default)) {
+                        Ok(value) => Some(value),
+                        Err(serialize_error) => {
+                            eprintln!(
+                                "[telemt] Warning: failed to serialize default config: {}",
+                                serialize_error
+                            );
+                            None
+                        }
+                    };
 
                 if config_path_explicit {
                     if let Some(serialized) = serialized.as_ref() {

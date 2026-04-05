@@ -2,8 +2,8 @@
 
 mod api;
 mod cli;
-mod conntrack_control;
 mod config;
+mod conntrack_control;
 mod crypto;
 #[cfg(unix)]
 mod daemon;

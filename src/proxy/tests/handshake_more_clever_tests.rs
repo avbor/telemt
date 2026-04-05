@@ -332,7 +332,13 @@ async fn invalid_secret_warning_lock_contention_and_bound() {
             b.wait().await;
             for i in 0..iterations_per_task {
                 let user_name = format!("contention_user_{}_{}", t, i);
-                warn_invalid_secret_once_in(shared.as_ref(), &user_name, "invalid_hex", ACCESS_SECRET_BYTES, None);
+                warn_invalid_secret_once_in(
+                    shared.as_ref(),
+                    &user_name,
+                    "invalid_hex",
+                    ACCESS_SECRET_BYTES,
+                    None,
+                );
             }
         }));
     }
@@ -629,7 +635,8 @@ fn auth_probe_saturation_note_resets_retention_window() {
 
     // This call may return false if backoff has elapsed, but it must not clear
     // the saturation state because `later` refreshed last_seen.
-    let _ = auth_probe_saturation_is_throttled_at_for_testing_in_shared(shared.as_ref(), check_time);
+    let _ =
+        auth_probe_saturation_is_throttled_at_for_testing_in_shared(shared.as_ref(), check_time);
     let guard = auth_probe_saturation_state_lock_for_testing_in_shared(shared.as_ref());
     assert!(
         guard.is_some(),

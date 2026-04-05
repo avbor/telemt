@@ -87,7 +87,11 @@ fn adversarial_saturation_grace_requires_extra_failures_before_preauth_throttle(
     }
 
     assert!(
-        auth_probe_should_apply_preauth_throttle_in(shared.as_ref(), ip, now + Duration::from_millis(1)),
+        auth_probe_should_apply_preauth_throttle_in(
+            shared.as_ref(),
+            ip,
+            now + Duration::from_millis(1)
+        ),
         "after grace failures are exhausted, preauth throttle must activate"
     );
 }
@@ -134,7 +138,11 @@ fn light_fuzz_randomized_failures_preserve_cap_and_nonzero_streaks() {
             (seed >> 8) as u8,
             seed as u8,
         ));
-        auth_probe_record_failure_in(shared.as_ref(), ip, now + Duration::from_millis((seed & 0x3f) as u64));
+        auth_probe_record_failure_in(
+            shared.as_ref(),
+            ip,
+            now + Duration::from_millis((seed & 0x3f) as u64),
+        );
     }
 
     let state = auth_probe_state_for_testing_in_shared(shared.as_ref());
@@ -162,7 +170,11 @@ async fn stress_parallel_failure_flood_keeps_state_hard_capped() {
                     ((i >> 8) & 0xff) as u8,
                     (i & 0xff) as u8,
                 ));
-                auth_probe_record_failure_in(shared.as_ref(), ip, start + Duration::from_millis((i % 4) as u64));
+                auth_probe_record_failure_in(
+                    shared.as_ref(),
+                    ip,
+                    start + Duration::from_millis((i % 4) as u64),
+                );
             }
         }));
     }

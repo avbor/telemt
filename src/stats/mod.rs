@@ -1593,13 +1593,15 @@ impl Stats {
         self.conntrack_delete_success_total.load(Ordering::Relaxed)
     }
     pub fn get_conntrack_delete_not_found_total(&self) -> u64 {
-        self.conntrack_delete_not_found_total.load(Ordering::Relaxed)
+        self.conntrack_delete_not_found_total
+            .load(Ordering::Relaxed)
     }
     pub fn get_conntrack_delete_error_total(&self) -> u64 {
         self.conntrack_delete_error_total.load(Ordering::Relaxed)
     }
     pub fn get_conntrack_close_event_drop_total(&self) -> u64 {
-        self.conntrack_close_event_drop_total.load(Ordering::Relaxed)
+        self.conntrack_close_event_drop_total
+            .load(Ordering::Relaxed)
     }
     pub fn get_me_keepalive_sent(&self) -> u64 {
         self.me_keepalive_sent.load(Ordering::Relaxed)

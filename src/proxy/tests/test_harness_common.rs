@@ -1,6 +1,6 @@
 use crate::config::ProxyConfig;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,7 +18,10 @@ mod tests {
         let arc = Arc::<AtomicUsize>::from_raw(data.cast::<AtomicUsize>());
         let cloned = Arc::clone(&arc);
         let _ = Arc::into_raw(arc);
-        RawWaker::new(Arc::into_raw(cloned).cast::<()>(), &WAKE_COUNTER_WAKER_VTABLE)
+        RawWaker::new(
+            Arc::into_raw(cloned).cast::<()>(),
+            &WAKE_COUNTER_WAKER_VTABLE,
+        )
     }
 
     unsafe fn wake_counter_wake(data: *const ()) {

@@ -518,15 +518,15 @@ where
                 );
                 return Err(ProxyError::Io(e));
             }
-                Err(_) => {
-                    debug!(
-                        peer = %real_peer,
-                        idle_secs = first_byte_idle_secs,
-                        "Closing idle pooled connection before first client byte"
-                    );
-                    return Ok(());
-                }
+            Err(_) => {
+                debug!(
+                    peer = %real_peer,
+                    idle_secs = first_byte_idle_secs,
+                    "Closing idle pooled connection before first client byte"
+                );
+                return Ok(());
             }
+        }
     };
 
     let handshake_timeout = handshake_timeout_with_mask_grace(&config);

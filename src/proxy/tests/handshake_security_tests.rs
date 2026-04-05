@@ -1427,7 +1427,13 @@ fn invalid_secret_warning_cache_is_bounded() {
 
     for idx in 0..(WARNED_SECRET_MAX_ENTRIES + 32) {
         let user = format!("warned_user_{idx}");
-        warn_invalid_secret_once_in(shared.as_ref(), &user, "invalid_length", ACCESS_SECRET_BYTES, Some(idx));
+        warn_invalid_secret_once_in(
+            shared.as_ref(),
+            &user,
+            "invalid_length",
+            ACCESS_SECRET_BYTES,
+            Some(idx),
+        );
     }
 
     let warned = warned_secrets_for_testing_in_shared(shared.as_ref());
@@ -1640,11 +1646,15 @@ fn unknown_sni_warn_cooldown_first_event_is_warn_and_repeated_events_are_info_un
         "first unknown SNI event must be eligible for WARN emission"
     );
     assert!(
-        !should_emit_unknown_sni_warn_for_testing_in_shared(shared.as_ref(), now + Duration::from_secs(1)),
+        !should_emit_unknown_sni_warn_for_testing_in_shared(
+            shared.as_ref(),
+            now + Duration::from_secs(1)
+        ),
         "events inside cooldown window must be demoted from WARN to INFO"
     );
     assert!(
-        should_emit_unknown_sni_warn_for_testing_in_shared(shared.as_ref(), 
+        should_emit_unknown_sni_warn_for_testing_in_shared(
+            shared.as_ref(),
             now + Duration::from_secs(UNKNOWN_SNI_WARN_COOLDOWN_SECS)
         ),
         "once cooldown expires, next unknown SNI event must be WARN-eligible again"
@@ -1725,7 +1735,12 @@ fn auth_probe_over_cap_churn_still_tracks_newcomer_after_round_limit() {
     }
 
     let newcomer = IpAddr::V4(Ipv4Addr::new(203, 0, 114, 77));
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, newcomer, now + Duration::from_secs(1));
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        newcomer,
+        now + Duration::from_secs(1),
+    );
 
     assert!(
         state.get(&newcomer).is_some(),
@@ -1931,8 +1946,18 @@ fn auth_probe_ipv6_is_bucketed_by_prefix_64() {
     let ip_a = IpAddr::V6("2001:db8:abcd:1234:1:2:3:4".parse().unwrap());
     let ip_b = IpAddr::V6("2001:db8:abcd:1234:ffff:eeee:dddd:cccc".parse().unwrap());
 
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, normalize_auth_probe_ip(ip_a), now);
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, normalize_auth_probe_ip(ip_b), now);
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        normalize_auth_probe_ip(ip_a),
+        now,
+    );
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        normalize_auth_probe_ip(ip_b),
+        now,
+    );
 
     let normalized = normalize_auth_probe_ip(ip_a);
     assert_eq!(
@@ -1956,8 +1981,18 @@ fn auth_probe_ipv6_different_prefixes_use_distinct_buckets() {
     let ip_a = IpAddr::V6("2001:db8:1111:2222:1:2:3:4".parse().unwrap());
     let ip_b = IpAddr::V6("2001:db8:1111:3333:1:2:3:4".parse().unwrap());
 
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, normalize_auth_probe_ip(ip_a), now);
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, normalize_auth_probe_ip(ip_b), now);
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        normalize_auth_probe_ip(ip_a),
+        now,
+    );
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        normalize_auth_probe_ip(ip_b),
+        now,
+    );
 
     assert_eq!(
         state.len(),
@@ -2070,7 +2105,12 @@ fn auth_probe_round_limited_overcap_eviction_marks_saturation_and_keeps_newcomer
     }
 
     let newcomer = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 40));
-    auth_probe_record_failure_with_state_in(shared.as_ref(), &state, newcomer, now + Duration::from_millis(1));
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        &state,
+        newcomer,
+        now + Duration::from_millis(1),
+    );
 
     assert!(
         state.get(&newcomer).is_some(),
@@ -2081,7 +2121,10 @@ fn auth_probe_round_limited_overcap_eviction_marks_saturation_and_keeps_newcomer
         "high fail-streak sentinel must survive round-limited eviction"
     );
     assert!(
-        auth_probe_saturation_is_throttled_at_for_testing_in_shared(shared.as_ref(), now + Duration::from_millis(1)),
+        auth_probe_saturation_is_throttled_at_for_testing_in_shared(
+            shared.as_ref(),
+            now + Duration::from_millis(1)
+        ),
         "round-limited over-cap path must activate saturation throttle marker"
     );
 }
@@ -2163,7 +2206,8 @@ fn stress_auth_probe_overcap_churn_does_not_starve_high_threat_sentinel_bucket()
             ((step >> 8) & 0xff) as u8,
             (step & 0xff) as u8,
         ));
-        auth_probe_record_failure_with_state_in(shared.as_ref(), 
+        auth_probe_record_failure_with_state_in(
+            shared.as_ref(),
             &state,
             newcomer,
             base_now + Duration::from_millis(step as u64 + 1),
@@ -2226,7 +2270,8 @@ fn light_fuzz_auth_probe_overcap_eviction_prefers_less_threatening_entries() {
             ((round >> 8) & 0xff) as u8,
             (round & 0xff) as u8,
         ));
-        auth_probe_record_failure_with_state_in(shared.as_ref(), 
+        auth_probe_record_failure_with_state_in(
+            shared.as_ref(),
             &state,
             newcomer,
             now + Duration::from_millis(round as u64 + 1),
@@ -3105,7 +3150,10 @@ async fn saturation_grace_boundary_still_admits_valid_tls_before_exhaustion() {
         matches!(result, HandshakeResult::Success(_)),
         "valid TLS should still pass while peer remains within saturation grace budget"
     );
-    assert_eq!(auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()), None);
+    assert_eq!(
+        auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()),
+        None
+    );
 }
 
 #[tokio::test]
@@ -3171,7 +3219,10 @@ async fn saturation_grace_exhaustion_blocks_valid_tls_until_backoff_expires() {
         matches!(allowed, HandshakeResult::Success(_)),
         "valid TLS should recover after peer-specific pre-auth backoff has elapsed"
     );
-    assert_eq!(auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()), None);
+    assert_eq!(
+        auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()),
+        None
+    );
 }
 
 #[tokio::test]

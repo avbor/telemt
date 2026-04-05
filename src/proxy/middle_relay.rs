@@ -3,12 +3,12 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap};
 #[cfg(test)]
 use std::future::Future;
-use std::hash::{BuildHasher, Hash};
 #[cfg(test)]
 use std::hash::Hasher;
+use std::hash::{BuildHasher, Hash};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -21,12 +21,12 @@ use crate::crypto::SecureRandom;
 use crate::error::{ProxyError, Result};
 use crate::protocol::constants::{secure_padding_len, *};
 use crate::proxy::handshake::HandshakeSuccess;
-use crate::proxy::shared_state::{
-    ConntrackCloseEvent, ConntrackClosePublishResult, ConntrackCloseReason, ProxySharedState,
-};
 use crate::proxy::route_mode::{
     ROUTE_SWITCH_ERROR_MSG, RelayRouteMode, RouteCutoverState, affected_cutover_state,
     cutover_stagger_delay,
+};
+use crate::proxy::shared_state::{
+    ConntrackCloseEvent, ConntrackClosePublishResult, ConntrackCloseReason, ProxySharedState,
 };
 use crate::stats::{
     MeD2cFlushReason, MeD2cQuotaRejectStage, MeD2cWriteMode, QuotaReserveError, Stats, UserStats,
@@ -257,9 +257,7 @@ impl RelayClientIdlePolicy {
         if self.soft_idle > self.hard_idle {
             self.soft_idle = self.hard_idle;
         }
-        self.legacy_frame_read_timeout = self
-            .legacy_frame_read_timeout
-            .min(pressure_hard_idle_cap);
+        self.legacy_frame_read_timeout = self.legacy_frame_read_timeout.min(pressure_hard_idle_cap);
         if self.grace_after_downstream_activity > self.hard_idle {
             self.grace_after_downstream_activity = self.hard_idle;
         }
@@ -461,12 +459,15 @@ fn report_desync_frame_too_large_in(
         .map(|b| matches!(b[0], b'G' | b'P' | b'H' | b'C' | b'D'))
         .unwrap_or(false);
     let now = Instant::now();
-    let dedup_key = hash_value_in(shared, &(
-        state.user.as_str(),
-        state.peer_hash,
-        proto_tag,
-        DESYNC_ERROR_CLASS,
-    ));
+    let dedup_key = hash_value_in(
+        shared,
+        &(
+            state.user.as_str(),
+            state.peer_hash,
+            proto_tag,
+            DESYNC_ERROR_CLASS,
+        ),
+    );
     let emit_full = should_emit_full_desync_in(shared, dedup_key, state.desync_all_full, now);
     let duration_ms = state.started_at.elapsed().as_millis() as u64;
     let bytes_me2c = state.bytes_me2c.load(Ordering::Relaxed);
@@ -631,7 +632,10 @@ fn observe_me_d2c_flush_event(
 }
 
 #[cfg(test)]
-pub(crate) fn mark_relay_idle_candidate_for_testing(shared: &ProxySharedState, conn_id: u64) -> bool {
+pub(crate) fn mark_relay_idle_candidate_for_testing(
+    shared: &ProxySharedState,
+    conn_id: u64,
+) -> bool {
     let registry = &shared.middle_relay.relay_idle_registry;
     let mut guard = match registry.lock() {
         Ok(guard) => guard,
@@ -716,7 +720,10 @@ pub(crate) fn relay_pressure_event_seq_for_testing(shared: &ProxySharedState) ->
 
 #[cfg(test)]
 pub(crate) fn relay_idle_mark_seq_for_testing(shared: &ProxySharedState) -> u64 {
-    shared.middle_relay.relay_idle_mark_seq.load(Ordering::Relaxed)
+    shared
+        .middle_relay
+        .relay_idle_mark_seq
+        .load(Ordering::Relaxed)
 }
 
 #[cfg(test)]
@@ -865,10 +872,7 @@ pub(crate) fn desync_dedup_insert_for_testing(shared: &ProxySharedState, key: u6
 }
 
 #[cfg(test)]
-pub(crate) fn desync_dedup_get_for_testing(
-    shared: &ProxySharedState,
-    key: u64,
-) -> Option<Instant> {
+pub(crate) fn desync_dedup_get_for_testing(shared: &ProxySharedState, key: u64) -> Option<Instant> {
     shared
         .middle_relay
         .desync_dedup
@@ -877,7 +881,9 @@ pub(crate) fn desync_dedup_get_for_testing(
 }
 
 #[cfg(test)]
-pub(crate) fn desync_dedup_keys_for_testing(shared: &ProxySharedState) -> std::collections::HashSet<u64> {
+pub(crate) fn desync_dedup_keys_for_testing(
+    shared: &ProxySharedState,
+) -> std::collections::HashSet<u64> {
     shared
         .middle_relay
         .desync_dedup

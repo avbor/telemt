@@ -206,7 +206,12 @@ fn auth_probe_eviction_identical_timestamps_keeps_map_bounded() {
     }
 
     let new_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 21, 21));
-    auth_probe_record_failure_with_state_in(shared.as_ref(), state, new_ip, same + Duration::from_millis(1));
+    auth_probe_record_failure_with_state_in(
+        shared.as_ref(),
+        state,
+        new_ip,
+        same + Duration::from_millis(1),
+    );
 
     assert_eq!(state.len(), AUTH_PROBE_TRACK_MAX_ENTRIES);
     assert!(state.contains_key(&new_ip));
@@ -325,7 +330,8 @@ async fn saturation_grace_exhaustion_under_concurrency_keeps_peer_throttled() {
         final_state.fail_streak
             >= AUTH_PROBE_BACKOFF_START_FAILS + AUTH_PROBE_SATURATION_GRACE_FAILS
     );
-    assert!(auth_probe_should_apply_preauth_throttle_in(shared.as_ref(), 
+    assert!(auth_probe_should_apply_preauth_throttle_in(
+        shared.as_ref(),
         peer_ip,
         Instant::now()
     ));

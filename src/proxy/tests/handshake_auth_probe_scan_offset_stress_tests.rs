@@ -36,7 +36,13 @@ fn adversarial_many_ips_same_time_spreads_offsets_without_bias_collapse() {
             i as u8,
             (255 - (i as u8)),
         ));
-        uniq.insert(auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, 65_536, 16));
+        uniq.insert(auth_probe_scan_start_offset_in(
+            shared.as_ref(),
+            ip,
+            now,
+            65_536,
+            16,
+        ));
     }
 
     assert!(
@@ -63,7 +69,11 @@ async fn stress_parallel_failure_churn_under_saturation_remains_capped_and_live(
                     ((i >> 8) & 0xff) as u8,
                     (i & 0xff) as u8,
                 ));
-                auth_probe_record_failure_in(shared.as_ref(), ip, start + Duration::from_micros((i % 128) as u64));
+                auth_probe_record_failure_in(
+                    shared.as_ref(),
+                    ip,
+                    start + Duration::from_micros((i % 128) as u64),
+                );
             }
         }));
     }
@@ -73,12 +83,17 @@ async fn stress_parallel_failure_churn_under_saturation_remains_capped_and_live(
     }
 
     assert!(
-        auth_probe_state_for_testing_in_shared(shared.as_ref()).len() <= AUTH_PROBE_TRACK_MAX_ENTRIES,
+        auth_probe_state_for_testing_in_shared(shared.as_ref()).len()
+            <= AUTH_PROBE_TRACK_MAX_ENTRIES,
         "state must remain hard-capped under parallel saturation churn"
     );
 
     let probe = IpAddr::V4(Ipv4Addr::new(10, 4, 1, 1));
-    let _ = auth_probe_should_apply_preauth_throttle_in(shared.as_ref(), probe, start + Duration::from_millis(1));
+    let _ = auth_probe_should_apply_preauth_throttle_in(
+        shared.as_ref(),
+        probe,
+        start + Duration::from_millis(1),
+    );
 }
 
 #[test]
@@ -102,7 +117,8 @@ fn light_fuzz_scan_offset_stays_within_window_for_randomized_inputs() {
         let scan_limit = ((seed >> 40) as usize % 1024).saturating_add(1);
         let now = base + Duration::from_nanos(seed & 0x1fff);
 
-        let offset = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let offset =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
         assert!(
             offset < state_len,
             "scan offset must always remain inside state length"

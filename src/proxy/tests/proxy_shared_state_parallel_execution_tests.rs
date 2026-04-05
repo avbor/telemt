@@ -1,16 +1,17 @@
 use crate::proxy::handshake::{
     auth_probe_fail_streak_for_testing_in_shared, auth_probe_record_failure_for_testing,
-    clear_auth_probe_state_for_testing_in_shared, clear_unknown_sni_warn_state_for_testing_in_shared,
+    clear_auth_probe_state_for_testing_in_shared,
+    clear_unknown_sni_warn_state_for_testing_in_shared,
     should_emit_unknown_sni_warn_for_testing_in_shared,
 };
 use crate::proxy::middle_relay::{
-    clear_desync_dedup_for_testing_in_shared, clear_relay_idle_pressure_state_for_testing_in_shared,
-    mark_relay_idle_candidate_for_testing, oldest_relay_idle_candidate_for_testing,
-    should_emit_full_desync_for_testing,
+    clear_desync_dedup_for_testing_in_shared,
+    clear_relay_idle_pressure_state_for_testing_in_shared, mark_relay_idle_candidate_for_testing,
+    oldest_relay_idle_candidate_for_testing, should_emit_full_desync_for_testing,
 };
 use crate::proxy::shared_state::ProxySharedState;
-use rand::SeedableRng;
 use rand::RngExt;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -99,8 +100,14 @@ async fn proxy_shared_state_dual_instance_same_ip_high_contention_no_counter_ble
         handle.await.expect("task join failed");
     }
 
-    assert_eq!(auth_probe_fail_streak_for_testing_in_shared(a.as_ref(), ip), Some(64));
-    assert_eq!(auth_probe_fail_streak_for_testing_in_shared(b.as_ref(), ip), Some(64));
+    assert_eq!(
+        auth_probe_fail_streak_for_testing_in_shared(a.as_ref(), ip),
+        Some(64)
+    );
+    assert_eq!(
+        auth_probe_fail_streak_for_testing_in_shared(b.as_ref(), ip),
+        Some(64)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -183,12 +190,7 @@ async fn proxy_shared_state_seed_matrix_concurrency_isolation_no_counter_bleed()
         clear_auth_probe_state_for_testing_in_shared(shared_a.as_ref());
         clear_auth_probe_state_for_testing_in_shared(shared_b.as_ref());
 
-        let ip = IpAddr::V4(Ipv4Addr::new(
-            198,
-            51,
-            100,
-            rng.random_range(1_u8..=250_u8),
-        ));
+        let ip = IpAddr::V4(Ipv4Addr::new(198, 51, 100, rng.random_range(1_u8..=250_u8)));
         let workers = rng.random_range(16_usize..=48_usize);
         let rounds = rng.random_range(4_usize..=10_usize);
 
@@ -210,7 +212,11 @@ async fn proxy_shared_state_seed_matrix_concurrency_isolation_no_counter_bleed()
                 handles.push(tokio::spawn(async move {
                     start_a.wait().await;
                     for _ in 0..a_ops {
-                        auth_probe_record_failure_for_testing(shared_a.as_ref(), ip, Instant::now());
+                        auth_probe_record_failure_for_testing(
+                            shared_a.as_ref(),
+                            ip,
+                            Instant::now(),
+                        );
                     }
                 }));
 
@@ -219,7 +225,11 @@ async fn proxy_shared_state_seed_matrix_concurrency_isolation_no_counter_bleed()
                 handles.push(tokio::spawn(async move {
                     start_b.wait().await;
                     for _ in 0..b_ops {
-                        auth_probe_record_failure_for_testing(shared_b.as_ref(), ip, Instant::now());
+                        auth_probe_record_failure_for_testing(
+                            shared_b.as_ref(),
+                            ip,
+                            Instant::now(),
+                        );
                     }
                 }));
             }

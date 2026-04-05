@@ -69,7 +69,10 @@ async fn relay_baseline_activity_timeout_fires_after_inactivity() {
         .expect("relay must complete after inactivity timeout")
         .expect("relay task must not panic");
 
-    assert!(done.is_ok(), "relay must return Ok(()) after inactivity timeout");
+    assert!(
+        done.is_ok(),
+        "relay must return Ok(()) after inactivity timeout"
+    );
 }
 
 #[tokio::test]
@@ -155,7 +158,10 @@ async fn relay_baseline_bidirectional_bytes_counted_symmetrically() {
         .expect("relay task must not panic");
     assert!(done.is_ok());
 
-    assert_eq!(stats.get_user_total_octets(user), (c2s.len() + s2c.len()) as u64);
+    assert_eq!(
+        stats.get_user_total_octets(user),
+        (c2s.len() + s2c.len()) as u64
+    );
 }
 
 #[tokio::test]
@@ -222,7 +228,10 @@ async fn relay_baseline_broken_pipe_midtransfer_returns_error() {
     match done {
         Err(ProxyError::Io(err)) => {
             assert!(
-                matches!(err.kind(), io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset),
+                matches!(
+                    err.kind(),
+                    io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+                ),
                 "expected BrokenPipe/ConnectionReset, got {:?}",
                 err.kind()
             );

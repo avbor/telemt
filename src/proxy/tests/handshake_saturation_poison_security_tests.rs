@@ -54,7 +54,9 @@ fn clear_auth_probe_state_clears_saturation_even_if_poisoned() {
     poison_saturation_mutex(shared.as_ref());
 
     auth_probe_note_saturation_in(shared.as_ref(), Instant::now());
-    assert!(auth_probe_saturation_is_throttled_for_testing_in_shared(shared.as_ref()));
+    assert!(auth_probe_saturation_is_throttled_for_testing_in_shared(
+        shared.as_ref()
+    ));
 
     clear_auth_probe_state_for_testing_in_shared(shared.as_ref());
     assert!(

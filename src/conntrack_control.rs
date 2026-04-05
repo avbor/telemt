@@ -56,7 +56,11 @@ pub(crate) fn spawn_conntrack_controller(
     shared: Arc<ProxySharedState>,
 ) {
     if !cfg!(target_os = "linux") {
-        let enabled = config_rx.borrow().server.conntrack_control.inline_conntrack_control;
+        let enabled = config_rx
+            .borrow()
+            .server
+            .conntrack_control
+            .inline_conntrack_control;
         stats.set_conntrack_control_enabled(enabled);
         stats.set_conntrack_control_available(false);
         stats.set_conntrack_pressure_active(false);
@@ -65,7 +69,9 @@ pub(crate) fn spawn_conntrack_controller(
         shared.disable_conntrack_close_sender();
         shared.set_conntrack_pressure_active(false);
         if enabled {
-            warn!("conntrack control is configured but unsupported on this OS; disabling runtime worker");
+            warn!(
+                "conntrack control is configured but unsupported on this OS; disabling runtime worker"
+            );
         }
         return;
     }
@@ -88,7 +94,13 @@ async fn run_conntrack_controller(
     let mut delete_budget_tokens = cfg.server.conntrack_control.delete_budget_per_sec;
     let mut backend = pick_backend(cfg.server.conntrack_control.backend);
 
-    apply_runtime_state(stats.as_ref(), shared.as_ref(), &cfg, backend.is_some(), false);
+    apply_runtime_state(
+        stats.as_ref(),
+        shared.as_ref(),
+        &cfg,
+        backend.is_some(),
+        false,
+    );
     reconcile_rules(&cfg, backend, stats.as_ref()).await;
 
     loop {
@@ -315,7 +327,9 @@ fn pick_backend(configured: ConntrackBackend) -> Option<NetfilterBackend> {
             }
         }
         ConntrackBackend::Nftables => command_exists("nft").then_some(NetfilterBackend::Nftables),
-        ConntrackBackend::Iptables => command_exists("iptables").then_some(NetfilterBackend::Iptables),
+        ConntrackBackend::Iptables => {
+            command_exists("iptables").then_some(NetfilterBackend::Iptables)
+        }
     }
 }
 
@@ -396,7 +410,12 @@ fn notrack_targets(cfg: &ProxyConfig) -> (Vec<Option<IpAddr>>, Vec<Option<IpAddr
 }
 
 async fn apply_nft_rules(cfg: &ProxyConfig) -> Result<(), String> {
-    let _ = run_command("nft", &["delete", "table", "inet", "telemt_conntrack"], None).await;
+    let _ = run_command(
+        "nft",
+        &["delete", "table", "inet", "telemt_conntrack"],
+        None,
+    )
+    .await;
     if matches!(cfg.server.conntrack_control.mode, ConntrackMode::Tracked) {
         return Ok(());
     }
@@ -446,7 +465,12 @@ async fn apply_iptables_rules_for_binary(
         return Ok(());
     }
     let chain = "TELEMT_NOTRACK";
-    let _ = run_command(binary, &["-t", "raw", "-D", "PREROUTING", "-j", chain], None).await;
+    let _ = run_command(
+        binary,
+        &["-t", "raw", "-D", "PREROUTING", "-j", chain],
+        None,
+    )
+    .await;
     let _ = run_command(binary, &["-t", "raw", "-F", chain], None).await;
     let _ = run_command(binary, &["-t", "raw", "-X", chain], None).await;
 
@@ -456,8 +480,20 @@ async fn apply_iptables_rules_for_binary(
 
     run_command(binary, &["-t", "raw", "-N", chain], None).await?;
     run_command(binary, &["-t", "raw", "-F", chain], None).await?;
-    if run_command(binary, &["-t", "raw", "-C", "PREROUTING", "-j", chain], None).await.is_err() {
-        run_command(binary, &["-t", "raw", "-I", "PREROUTING", "1", "-j", chain], None).await?;
+    if run_command(
+        binary,
+        &["-t", "raw", "-C", "PREROUTING", "-j", chain],
+        None,
+    )
+    .await
+    .is_err()
+    {
+        run_command(
+            binary,
+            &["-t", "raw", "-I", "PREROUTING", "1", "-j", chain],
+            None,
+        )
+        .await?;
     }
 
     let (v4_targets, v6_targets) = notrack_targets(cfg);
@@ -487,11 +523,26 @@ async fn apply_iptables_rules_for_binary(
 }
 
 async fn clear_notrack_rules_all_backends() {
-    let _ = run_command("nft", &["delete", "table", "inet", "telemt_conntrack"], None).await;
-    let _ = run_command("iptables", &["-t", "raw", "-D", "PREROUTING", "-j", "TELEMT_NOTRACK"], None).await;
+    let _ = run_command(
+        "nft",
+        &["delete", "table", "inet", "telemt_conntrack"],
+        None,
+    )
+    .await;
+    let _ = run_command(
+        "iptables",
+        &["-t", "raw", "-D", "PREROUTING", "-j", "TELEMT_NOTRACK"],
+        None,
+    )
+    .await;
     let _ = run_command("iptables", &["-t", "raw", "-F", "TELEMT_NOTRACK"], None).await;
     let _ = run_command("iptables", &["-t", "raw", "-X", "TELEMT_NOTRACK"], None).await;
-    let _ = run_command("ip6tables", &["-t", "raw", "-D", "PREROUTING", "-j", "TELEMT_NOTRACK"], None).await;
+    let _ = run_command(
+        "ip6tables",
+        &["-t", "raw", "-D", "PREROUTING", "-j", "TELEMT_NOTRACK"],
+        None,
+    )
+    .await;
     let _ = run_command("ip6tables", &["-t", "raw", "-F", "TELEMT_NOTRACK"], None).await;
     let _ = run_command("ip6tables", &["-t", "raw", "-X", "TELEMT_NOTRACK"], None).await;
 }

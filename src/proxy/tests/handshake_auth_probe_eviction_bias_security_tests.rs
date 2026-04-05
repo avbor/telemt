@@ -19,7 +19,8 @@ fn adversarial_large_state_offsets_escape_first_scan_window() {
             ((i.wrapping_mul(131)) & 0xff) as u8,
         ));
         let now = base + Duration::from_nanos(i);
-        let start = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let start =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
         if start >= scan_limit {
             saw_offset_outside_first_window = true;
             break;
@@ -48,7 +49,8 @@ fn stress_large_state_offsets_cover_many_scan_windows() {
             ((i.wrapping_mul(17)) & 0xff) as u8,
         ));
         let now = base + Duration::from_micros(i);
-        let start = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let start =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
         covered_windows.insert(start / scan_limit);
     }
 
@@ -80,7 +82,8 @@ fn light_fuzz_offset_always_stays_inside_state_len() {
         let state_len = ((seed >> 16) as usize % 200_000).saturating_add(1);
         let scan_limit = ((seed >> 40) as usize % 2_048).saturating_add(1);
         let now = base + Duration::from_nanos(seed & 0x0fff);
-        let start = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let start =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
 
         assert!(
             start < state_len,

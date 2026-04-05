@@ -255,7 +255,11 @@ async fn wait_mask_connect_budget(started: Instant) {
 // sigma is chosen so ~99% of raw samples land inside [floor, ceiling] before clamp.
 // When floor > ceiling (misconfiguration), returns ceiling (the smaller value).
 // When floor == ceiling, returns that value. When both are 0, returns 0.
-pub(crate) fn sample_lognormal_percentile_bounded(floor: u64, ceiling: u64, rng: &mut impl Rng) -> u64 {
+pub(crate) fn sample_lognormal_percentile_bounded(
+    floor: u64,
+    ceiling: u64,
+    rng: &mut impl Rng,
+) -> u64 {
     if ceiling == 0 && floor == 0 {
         return 0;
     }
@@ -296,7 +300,9 @@ fn mask_outcome_target_budget(config: &ProxyConfig) -> Duration {
         }
         if ceiling > floor {
             let mut rng = rand::rng();
-            return Duration::from_millis(sample_lognormal_percentile_bounded(floor, ceiling, &mut rng));
+            return Duration::from_millis(sample_lognormal_percentile_bounded(
+                floor, ceiling, &mut rng,
+            ));
         }
         // ceiling <= floor: use the larger value (fail-closed: preserve longer delay)
         return Duration::from_millis(floor.max(ceiling));

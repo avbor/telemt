@@ -65,9 +65,15 @@ fn adaptive_base_tier_buffers_unchanged() {
 fn adaptive_tier1_buffers_within_caps() {
     let (c2s, s2c) = direct_copy_buffers_for_tier(AdaptiveTier::Tier1, 65536, 262144);
     assert!(c2s > 65536, "Tier1 c2s should exceed Base");
-    assert!(c2s <= 128 * 1024, "Tier1 c2s should not exceed DIRECT_C2S_CAP_BYTES");
+    assert!(
+        c2s <= 128 * 1024,
+        "Tier1 c2s should not exceed DIRECT_C2S_CAP_BYTES"
+    );
     assert!(s2c > 262144, "Tier1 s2c should exceed Base");
-    assert!(s2c <= 512 * 1024, "Tier1 s2c should not exceed DIRECT_S2C_CAP_BYTES");
+    assert!(
+        s2c <= 512 * 1024,
+        "Tier1 s2c should not exceed DIRECT_S2C_CAP_BYTES"
+    );
 }
 
 #[test]

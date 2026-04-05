@@ -13,7 +13,12 @@ fn desync_all_full_bypass_does_not_initialize_or_grow_dedup_cache() {
 
     for i in 0..20_000u64 {
         assert!(
-            should_emit_full_desync_for_testing(shared.as_ref(), 0xD35E_D000_0000_0000u64 ^ i, true, now),
+            should_emit_full_desync_for_testing(
+                shared.as_ref(),
+                0xD35E_D000_0000_0000u64 ^ i,
+                true,
+                now
+            ),
             "desync_all_full path must always emit"
         );
     }
@@ -37,7 +42,12 @@ fn desync_all_full_bypass_keeps_existing_dedup_entries_unchanged() {
     let now = Instant::now();
     for i in 0..2048u64 {
         assert!(
-            should_emit_full_desync_for_testing(shared.as_ref(), 0xF011_F000_0000_0000u64 ^ i, true, now),
+            should_emit_full_desync_for_testing(
+                shared.as_ref(),
+                0xF011_F000_0000_0000u64 ^ i,
+                true,
+                now
+            ),
             "desync_all_full must bypass suppression and dedup refresh"
         );
     }
@@ -68,7 +78,8 @@ fn edge_all_full_burst_does_not_poison_later_false_path_tracking() {
 
     let now = Instant::now();
     for i in 0..8192u64 {
-        assert!(should_emit_full_desync_for_testing(shared.as_ref(), 
+        assert!(should_emit_full_desync_for_testing(
+            shared.as_ref(),
             0xABCD_0000_0000_0000 ^ i,
             true,
             now
@@ -102,7 +113,12 @@ fn adversarial_mixed_sequence_true_steps_never_change_cache_len() {
         let flag_all_full = (seed & 0x1) == 1;
         let key = 0x7000_0000_0000_0000u64 ^ i ^ seed;
         let before = desync_dedup_len_for_testing(shared.as_ref());
-        let _ = should_emit_full_desync_for_testing(shared.as_ref(), key, flag_all_full, Instant::now());
+        let _ = should_emit_full_desync_for_testing(
+            shared.as_ref(),
+            key,
+            flag_all_full,
+            Instant::now(),
+        );
         let after = desync_dedup_len_for_testing(shared.as_ref());
 
         if flag_all_full {
@@ -124,7 +140,12 @@ fn light_fuzz_all_full_mode_always_emits_and_stays_bounded() {
         seed ^= seed >> 9;
         seed ^= seed << 8;
         let key = seed ^ 0x55AA_55AA_55AA_55AAu64;
-        assert!(should_emit_full_desync_for_testing(shared.as_ref(), key, true, Instant::now()));
+        assert!(should_emit_full_desync_for_testing(
+            shared.as_ref(),
+            key,
+            true,
+            Instant::now()
+        ));
     }
 
     let after = desync_dedup_len_for_testing(shared.as_ref());

@@ -1,6 +1,6 @@
 use super::*;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 fn seeded_rng(seed: u64) -> StdRng {
     StdRng::seed_from_u64(seed)
@@ -57,7 +57,10 @@ fn masking_lognormal_degenerate_floor_eq_ceiling_returns_floor() {
     let mut rng = seeded_rng(99);
     for _ in 0..100 {
         let val = sample_lognormal_percentile_bounded(1000, 1000, &mut rng);
-        assert_eq!(val, 1000, "floor == ceiling must always return exactly that value");
+        assert_eq!(
+            val, 1000,
+            "floor == ceiling must always return exactly that value"
+        );
     }
 }
 

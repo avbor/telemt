@@ -1,6 +1,6 @@
 use super::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 static RACE_TEST_KEY_COUNTER: AtomicUsize = AtomicUsize::new(1_000_000);

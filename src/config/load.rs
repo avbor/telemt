@@ -947,7 +947,11 @@ impl ProxyConfig {
         }
 
         if matches!(config.server.conntrack_control.mode, ConntrackMode::Hybrid)
-            && config.server.conntrack_control.hybrid_listener_ips.is_empty()
+            && config
+                .server
+                .conntrack_control
+                .hybrid_listener_ips
+                .is_empty()
         {
             return Err(ProxyError::Config(
                 "server.conntrack_control.hybrid_listener_ips must be non-empty in mode=hybrid"
@@ -2503,9 +2507,9 @@ mod tests {
         let path = dir.join("telemt_conntrack_high_watermark_invalid_test.toml");
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
-        assert!(
-            err.contains("server.conntrack_control.pressure_high_watermark_pct must be within [1, 100]")
-        );
+        assert!(err.contains(
+            "server.conntrack_control.pressure_high_watermark_pct must be within [1, 100]"
+        ));
         let _ = std::fs::remove_file(path);
     }
 
@@ -2570,9 +2574,9 @@ mod tests {
         let path = dir.join("telemt_conntrack_hybrid_requires_ips_test.toml");
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
-        assert!(
-            err.contains("server.conntrack_control.hybrid_listener_ips must be non-empty in mode=hybrid")
-        );
+        assert!(err.contains(
+            "server.conntrack_control.hybrid_listener_ips must be non-empty in mode=hybrid"
+        ));
         let _ = std::fs::remove_file(path);
     }
 

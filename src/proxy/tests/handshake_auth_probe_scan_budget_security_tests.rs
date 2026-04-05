@@ -31,7 +31,8 @@ fn adversarial_large_state_must_allow_start_offset_outside_scan_budget_window() 
             (i & 0xff) as u8,
         ));
         let now = base + Duration::from_micros(i as u64);
-        let start = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let start =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
         assert!(
             start < state_len,
             "start offset must stay within state length; start={start}, len={state_len}"
@@ -83,7 +84,8 @@ fn light_fuzz_scan_offset_budget_never_exceeds_effective_window() {
         let state_len = ((seed >> 8) as usize % 131_072).saturating_add(1);
         let scan_limit = ((seed >> 32) as usize % 512).saturating_add(1);
         let now = base + Duration::from_nanos(seed & 0xffff);
-        let start = auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
+        let start =
+            auth_probe_scan_start_offset_in(shared.as_ref(), ip, now, state_len, scan_limit);
 
         assert!(
             start < state_len,

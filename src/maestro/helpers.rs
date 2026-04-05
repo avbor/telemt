@@ -272,7 +272,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let startup_cwd = std::env::temp_dir().join(format!("telemt_cfg_startup_candidates_{nonce}"));
+        let startup_cwd =
+            std::env::temp_dir().join(format!("telemt_cfg_startup_candidates_{nonce}"));
         std::fs::create_dir_all(&startup_cwd).unwrap();
         let telemt = startup_cwd.join("telemt.toml");
         std::fs::write(&telemt, " ").unwrap();

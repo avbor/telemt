@@ -118,7 +118,11 @@ fn auth_probe_state_expired(state: &AuthProbeState, now: Instant) -> bool {
     now.duration_since(state.last_seen) > retention
 }
 
-fn auth_probe_eviction_offset_in(shared: &ProxySharedState, peer_ip: IpAddr, now: Instant) -> usize {
+fn auth_probe_eviction_offset_in(
+    shared: &ProxySharedState,
+    peer_ip: IpAddr,
+    now: Instant,
+) -> usize {
     let hasher_state = &shared.handshake.auth_probe_eviction_hasher;
     let mut hasher = hasher_state.build_hasher();
     peer_ip.hash(&mut hasher);

@@ -319,12 +319,18 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_syslog_priority_for_level_mapping() {
-        assert_eq!(syslog_priority_for_level(&tracing::Level::ERROR), libc::LOG_ERR);
+        assert_eq!(
+            syslog_priority_for_level(&tracing::Level::ERROR),
+            libc::LOG_ERR
+        );
         assert_eq!(
             syslog_priority_for_level(&tracing::Level::WARN),
             libc::LOG_WARNING
         );
-        assert_eq!(syslog_priority_for_level(&tracing::Level::INFO), libc::LOG_INFO);
+        assert_eq!(
+            syslog_priority_for_level(&tracing::Level::INFO),
+            libc::LOG_INFO
+        );
         assert_eq!(
             syslog_priority_for_level(&tracing::Level::DEBUG),
             libc::LOG_DEBUG

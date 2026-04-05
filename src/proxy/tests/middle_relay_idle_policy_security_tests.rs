@@ -366,23 +366,42 @@ fn pressure_evicts_oldest_idle_candidate_with_deterministic_ordering() {
 
     assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), 10));
     assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), 11));
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(10));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(10)
+    );
 
     note_relay_pressure_event_for_testing(shared.as_ref());
 
     let mut seen_for_newer = 0u64;
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 11, &mut seen_for_newer, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            11,
+            &mut seen_for_newer,
+            &stats
+        ),
         "newer idle candidate must not be evicted while older candidate exists"
     );
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(10));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(10)
+    );
 
     let mut seen_for_oldest = 0u64;
     assert!(
-        maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 10, &mut seen_for_oldest, &stats),
+        maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            10,
+            &mut seen_for_oldest,
+            &stats
+        ),
         "oldest idle candidate must be evicted first under pressure"
     );
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(11));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(11)
+    );
     assert_eq!(stats.get_relay_pressure_evict_total(), 1);
 
     clear_relay_idle_pressure_state_for_testing_in_shared(shared.as_ref());
@@ -402,7 +421,10 @@ fn pressure_does_not_evict_without_new_pressure_signal() {
         "without new pressure signal, candidate must stay"
     );
     assert_eq!(stats.get_relay_pressure_evict_total(), 0);
-    assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), Some(21));
+    assert_eq!(
+        oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+        Some(21)
+    );
 
     clear_relay_idle_pressure_state_for_testing_in_shared(shared.as_ref());
 }
@@ -415,7 +437,10 @@ fn stress_pressure_eviction_preserves_fifo_across_many_candidates() {
 
     let mut seen_per_conn = std::collections::HashMap::new();
     for conn_id in 1000u64..1064u64 {
-        assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), conn_id));
+        assert!(mark_relay_idle_candidate_for_testing(
+            shared.as_ref(),
+            conn_id
+        ));
         seen_per_conn.insert(conn_id, 0u64);
     }
 
@@ -426,7 +451,12 @@ fn stress_pressure_eviction_preserves_fifo_across_many_candidates() {
             .get(&expected)
             .expect("per-conn pressure cursor must exist");
         assert!(
-            maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), expected, &mut seen, &stats),
+            maybe_evict_idle_candidate_on_pressure_for_testing(
+                shared.as_ref(),
+                expected,
+                &mut seen,
+                &stats
+            ),
             "expected conn_id {expected} must be evicted next by deterministic FIFO ordering"
         );
         seen_per_conn.insert(expected, seen);
@@ -436,7 +466,10 @@ fn stress_pressure_eviction_preserves_fifo_across_many_candidates() {
         } else {
             Some(expected + 1)
         };
-        assert_eq!(oldest_relay_idle_candidate_for_testing(shared.as_ref()), next);
+        assert_eq!(
+            oldest_relay_idle_candidate_for_testing(shared.as_ref()),
+            next
+        );
     }
 
     assert_eq!(stats.get_relay_pressure_evict_total(), 64);
@@ -460,9 +493,24 @@ fn blackhat_single_pressure_event_must_not_evict_more_than_one_candidate() {
     // Single pressure event should authorize at most one eviction globally.
     note_relay_pressure_event_for_testing(shared.as_ref());
 
-    let evicted_301 = maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 301, &mut seen_301, &stats);
-    let evicted_302 = maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 302, &mut seen_302, &stats);
-    let evicted_303 = maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 303, &mut seen_303, &stats);
+    let evicted_301 = maybe_evict_idle_candidate_on_pressure_for_testing(
+        shared.as_ref(),
+        301,
+        &mut seen_301,
+        &stats,
+    );
+    let evicted_302 = maybe_evict_idle_candidate_on_pressure_for_testing(
+        shared.as_ref(),
+        302,
+        &mut seen_302,
+        &stats,
+    );
+    let evicted_303 = maybe_evict_idle_candidate_on_pressure_for_testing(
+        shared.as_ref(),
+        303,
+        &mut seen_303,
+        &stats,
+    );
 
     let evicted_total = [evicted_301, evicted_302, evicted_303]
         .iter()
@@ -492,12 +540,22 @@ fn blackhat_pressure_counter_must_track_global_budget_not_per_session_cursor() {
     note_relay_pressure_event_for_testing(shared.as_ref());
 
     assert!(
-        maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 401, &mut seen_oldest, &stats),
+        maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            401,
+            &mut seen_oldest,
+            &stats
+        ),
         "oldest candidate must consume pressure budget first"
     );
 
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 402, &mut seen_next, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            402,
+            &mut seen_next,
+            &stats
+        ),
         "next candidate must not consume the same pressure budget"
     );
 
@@ -522,7 +580,12 @@ fn blackhat_stale_pressure_before_idle_mark_must_not_trigger_eviction() {
 
     let mut seen = 0u64;
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 501, &mut seen, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            501,
+            &mut seen,
+            &stats
+        ),
         "stale pressure (before soft-idle mark) must not evict newly marked candidate"
     );
 
@@ -545,9 +608,24 @@ fn blackhat_stale_pressure_must_not_evict_any_of_newly_marked_batch() {
     let mut seen_513 = 0u64;
 
     let evicted = [
-        maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 511, &mut seen_511, &stats),
-        maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 512, &mut seen_512, &stats),
-        maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 513, &mut seen_513, &stats),
+        maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            511,
+            &mut seen_511,
+            &stats,
+        ),
+        maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            512,
+            &mut seen_512,
+            &stats,
+        ),
+        maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            513,
+            &mut seen_513,
+            &stats,
+        ),
     ]
     .iter()
     .filter(|value| **value)
@@ -572,7 +650,12 @@ fn blackhat_stale_pressure_seen_without_candidates_must_be_globally_invalidated(
     // Session A observed pressure while there were no candidates.
     let mut seen_a = 0u64;
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 999_001, &mut seen_a, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            999_001,
+            &mut seen_a,
+            &stats
+        ),
         "no candidate existed, so no eviction is possible"
     );
 
@@ -580,7 +663,12 @@ fn blackhat_stale_pressure_seen_without_candidates_must_be_globally_invalidated(
     assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), 521));
     let mut seen_b = 0u64;
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 521, &mut seen_b, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            521,
+            &mut seen_b,
+            &stats
+        ),
         "once pressure is observed with empty candidate set, it must not be replayed later"
     );
 
@@ -600,7 +688,12 @@ fn blackhat_stale_pressure_must_not_survive_candidate_churn() {
 
     let mut seen = 0u64;
     assert!(
-        !maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), 532, &mut seen, &stats),
+        !maybe_evict_idle_candidate_on_pressure_for_testing(
+            shared.as_ref(),
+            532,
+            &mut seen,
+            &stats
+        ),
         "stale pressure must not survive clear+remark churn cycles"
     );
 
@@ -663,7 +756,10 @@ async fn integration_race_single_pressure_event_allows_at_most_one_eviction_unde
     let mut seen_per_session = vec![0u64; sessions];
 
     for conn_id in &conn_ids {
-        assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), *conn_id));
+        assert!(mark_relay_idle_candidate_for_testing(
+            shared.as_ref(),
+            *conn_id
+        ));
     }
 
     for round in 0..rounds {
@@ -676,8 +772,12 @@ async fn integration_race_single_pressure_event_allows_at_most_one_eviction_unde
             let stats = stats.clone();
             let shared = shared.clone();
             joins.push(tokio::spawn(async move {
-                let evicted =
-                    maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), conn_id, &mut seen, stats.as_ref());
+                let evicted = maybe_evict_idle_candidate_on_pressure_for_testing(
+                    shared.as_ref(),
+                    conn_id,
+                    &mut seen,
+                    stats.as_ref(),
+                );
                 (idx, conn_id, seen, evicted)
             }));
         }
@@ -729,7 +829,10 @@ async fn integration_race_burst_pressure_with_churn_preserves_empty_set_invalida
     let mut seen_per_session = vec![0u64; sessions];
 
     for conn_id in &conn_ids {
-        assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), *conn_id));
+        assert!(mark_relay_idle_candidate_for_testing(
+            shared.as_ref(),
+            *conn_id
+        ));
     }
 
     let mut expected_total_evictions = 0u64;
@@ -751,8 +854,12 @@ async fn integration_race_burst_pressure_with_churn_preserves_empty_set_invalida
             let stats = stats.clone();
             let shared = shared.clone();
             joins.push(tokio::spawn(async move {
-                let evicted =
-                    maybe_evict_idle_candidate_on_pressure_for_testing(shared.as_ref(), conn_id, &mut seen, stats.as_ref());
+                let evicted = maybe_evict_idle_candidate_on_pressure_for_testing(
+                    shared.as_ref(),
+                    conn_id,
+                    &mut seen,
+                    stats.as_ref(),
+                );
                 (idx, conn_id, seen, evicted)
             }));
         }
@@ -774,7 +881,10 @@ async fn integration_race_burst_pressure_with_churn_preserves_empty_set_invalida
                 "round {round}: empty candidate phase must not allow stale-pressure eviction"
             );
             for conn_id in &conn_ids {
-                assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), *conn_id));
+                assert!(mark_relay_idle_candidate_for_testing(
+                    shared.as_ref(),
+                    *conn_id
+                ));
             }
         } else {
             assert!(
@@ -783,7 +893,10 @@ async fn integration_race_burst_pressure_with_churn_preserves_empty_set_invalida
             );
             if let Some(conn_id) = evicted_conn {
                 expected_total_evictions = expected_total_evictions.saturating_add(1);
-                assert!(mark_relay_idle_candidate_for_testing(shared.as_ref(), conn_id));
+                assert!(mark_relay_idle_candidate_for_testing(
+                    shared.as_ref(),
+                    conn_id
+                ));
             }
         }
     }

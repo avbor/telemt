@@ -116,8 +116,14 @@ async fn handshake_baseline_auth_probe_streak_increments_per_ip() {
         )
         .await;
         assert!(matches!(res, HandshakeResult::BadClient { .. }));
-        assert_eq!(auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()), Some(expected));
-        assert_eq!(auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), untouched_ip), None);
+        assert_eq!(
+            auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), peer.ip()),
+            Some(expected)
+        );
+        assert_eq!(
+            auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), untouched_ip),
+            None
+        );
     }
 }
 
@@ -149,7 +155,8 @@ fn handshake_baseline_repeated_probes_streak_monotonic() {
 
     for _ in 0..100 {
         auth_probe_record_failure_in(shared.as_ref(), ip, now);
-        let current = auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), ip).unwrap_or(0);
+        let current =
+            auth_probe_fail_streak_for_testing_in_shared(shared.as_ref(), ip).unwrap_or(0);
         assert!(current >= prev, "streak must be monotonic");
         prev = current;
     }
@@ -173,8 +180,16 @@ fn handshake_baseline_throttled_ip_incurs_backoff_delay() {
     let before_expiry = now + delay.saturating_sub(Duration::from_millis(1));
     let after_expiry = now + delay + Duration::from_millis(1);
 
-    assert!(auth_probe_is_throttled_in(shared.as_ref(), ip, before_expiry));
-    assert!(!auth_probe_is_throttled_in(shared.as_ref(), ip, after_expiry));
+    assert!(auth_probe_is_throttled_in(
+        shared.as_ref(),
+        ip,
+        before_expiry
+    ));
+    assert!(!auth_probe_is_throttled_in(
+        shared.as_ref(),
+        ip,
+        after_expiry
+    ));
 }
 
 #[tokio::test]
@@ -212,7 +227,10 @@ async fn handshake_baseline_malformed_probe_frames_fail_closed_to_masking() {
         .expect("malformed probe handling must complete in bounded time");
 
         assert!(
-            matches!(res, HandshakeResult::BadClient { .. } | HandshakeResult::Error(_)),
+            matches!(
+                res,
+                HandshakeResult::BadClient { .. } | HandshakeResult::Error(_)
+            ),
             "malformed probe must fail closed"
         );
     }
