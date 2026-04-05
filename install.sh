@@ -192,7 +192,13 @@ verify_install_deps() {
 detect_arch() {
     sys_arch="$(uname -m)"
     case "$sys_arch" in
-        x86_64|amd64) echo "x86_64" ;;
+        x86_64|amd64)
+            if [ -r /proc/cpuinfo ] && grep -q "avx2" /proc/cpuinfo 2>/dev/null && grep -q "bmi2" /proc/cpuinfo 2>/dev/null; then
+                echo "x86_64-v3"
+            else
+                echo "x86_64"
+            fi
+            ;;
         aarch64|arm64) echo "aarch64" ;;
         *) die "Unsupported architecture: $sys_arch" ;;
     esac
@@ -500,7 +506,21 @@ case "$ACTION" in
             die "Temp directory is invalid or was not created"
         fi
 
-        fetch_file "$DL_URL" "${TEMP_DIR}/${FILE_NAME}" || die "Download failed"
+        if ! fetch_file "$DL_URL" "${TEMP_DIR}/${FILE_NAME}"; then
+            if [ "$ARCH" = "x86_64-v3" ]; then
+                say "  -> x86_64-v3 build not found, falling back to standard x86_64..."
+                ARCH="x86_64"
+                FILE_NAME="${BIN_NAME}-${ARCH}-linux-${LIBC}.tar.gz"
+                if [ "$TARGET_VERSION" = "latest" ]; then
+                    DL_URL="https://github.com/${REPO}/releases/latest/download/${FILE_NAME}"
+                else 
+                    DL_URL="https://github.com/${REPO}/releases/download/${TARGET_VERSION}/${FILE_NAME}"
+                fi
+                fetch_file "$DL_URL" "${TEMP_DIR}/${FILE_NAME}" || die "Download failed"
+            else
+                die "Download failed"
+            fi
+        fi
 
         say ">>> Stage 3: Extracting archive"
         if ! gzip -dc "${TEMP_DIR}/${FILE_NAME}" | tar -xf - -C "$TEMP_DIR" 2>/dev/null; then
