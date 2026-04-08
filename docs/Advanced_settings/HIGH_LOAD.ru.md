@@ -128,9 +128,9 @@ frontend proxy_in
 backend telemt_backend
     option tcp-smart-connect
     # Send-Proxy-V2 обязателен для сохранения IP клиента внутри внутренней логики Telemt
-    server telemt_core 127.0.0.1:8443 maxconn 250000 send-proxy-v2 check inter 5s
+    server telemt_core 10.10.10.1:443 maxconn 250000 send-proxy-v2 check inter 5s
 ```
-**Важно**: Telemt должен быть настроен на обработку протокола `PROXY` на порту `8443`, чтобы получать оригинальные IP-адреса клиентов.
+**Важно**: Telemt должен быть настроен на обработку протокола `PROXY` на порту `443`, чтобы получать оригинальные IP-адреса клиентов.
 
 ---
 ## 5. Диагностика
